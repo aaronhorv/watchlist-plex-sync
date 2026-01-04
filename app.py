@@ -58,17 +58,13 @@ def extract_user_id(url):
     return None
 
 def get_imdb_export_data(user_id):
-    """Get IMDB watchlist data using the export endpoint"""
+    """Get IMDB watchlist data using web scraping"""
     try:
-        # IMDB provides an export endpoint for lists
-        export_url = f"https://www.imdb.com/list/export"
-        
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': f'https://www.imdb.com/user/{user_id}/watchlist'
         }
         
-        # Get the watchlist page first to establish session
         session = requests.Session()
         watchlist_url = f"https://www.imdb.com/user/{user_id}/watchlist"
         
@@ -76,19 +72,15 @@ def get_imdb_export_data(user_id):
         response = session.get(watchlist_url, headers=headers, timeout=15)
         response.raise_for_status()
         
-        # Try to find the list ID in the page
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Look for data-list-id attribute or list ID in page
+        # Try CSV export first
         list_id = None
-        
-        # Method 1: Look in meta tags or data attributes
         list_elements = soup.find_all(attrs={'data-list-id': True})
         if list_elements:
             list_id = list_elements[0].get('data-list-id')
             add_log(f"Found list ID in data attribute: {list_id}", 'info')
         
-        # Method 2: Look in the export link if it exists
         if not list_id:
             export_link = soup.find('a', href=re.compile(r'/list/export'))
             if export_link:
@@ -98,7 +90,6 @@ def get_imdb_export_data(user_id):
                     list_id = match.group(1)
                     add_log(f"Found list ID in export link: {list_id}", 'info')
         
-        # Method 3: Look for list ID in page scripts or JSON
         if not list_id:
             scripts = soup.find_all('script')
             for script in scripts:
@@ -110,7 +101,6 @@ def get_imdb_export_data(user_id):
                         break
         
         if list_id:
-            # Try to get CSV export
             export_url = f"https://www.imdb.com/list/{list_id}/export"
             add_log(f"Attempting CSV export from: {export_url}", 'info')
             
@@ -118,7 +108,6 @@ def get_imdb_export_data(user_id):
             if response.status_code == 200:
                 return parse_csv_export(response.text)
         
-        # Fallback: scrape the page directly
         add_log("CSV export not available, falling back to page scraping", 'warning')
         return scrape_watchlist_page(soup, watchlist_url)
         
@@ -136,10 +125,8 @@ def parse_csv_export(csv_text):
     if len(lines) < 2:
         return items
     
-    # First line is headers
     headers = lines[0].split(',')
     
-    # Find the index of the 'Const' column (contains tt ID)
     const_idx = None
     title_idx = None
     
@@ -153,7 +140,6 @@ def parse_csv_export(csv_text):
         add_log("Could not find 'Const' column in CSV", 'error')
         return items
     
-    # Parse each line
     for line in lines[1:]:
         parts = line.split(',')
         if len(parts) > const_idx:
@@ -175,7 +161,6 @@ def scrape_watchlist_page(soup, url):
     items = []
     seen_ids = set()
     
-    # Look for all title links
     title_links = soup.find_all('a', href=re.compile(r'/title/tt\d+'))
     
     for link in title_links:
@@ -189,7 +174,6 @@ def scrape_watchlist_page(soup, url):
                 continue
             seen_ids.add(imdb_id)
             
-            # Get title
             title = link.get_text(strip=True)
             if not title or len(title) < 2:
                 title = f"IMDB:{imdb_id}"
@@ -206,14 +190,12 @@ def scrape_watchlist_page(soup, url):
 def get_imdb_watchlist(list_url):
     """Main function to get IMDB watchlist items"""
     try:
-        # Check if it's a user watchlist or custom list
         user_id = extract_user_id(list_url)
         
         if user_id:
             add_log(f"Detected personal watchlist for user: {user_id}", 'info')
             return get_imdb_export_data(user_id)
         else:
-            # It's a custom list
             add_log(f"Detected custom list", 'info')
             return scrape_custom_list(list_url)
         
@@ -240,7 +222,8 @@ def scrape_custom_list(list_url):
         add_log(f"Error scraping custom list: {str(e)}", 'error')
         return []
 
-def get_tmdb_id(imdb_id, api_key):
+def get_tmdb_data(imdb_id, api_key):
+    """Get TMDB data from IMDB ID"""
     try:
         url = f"https://api.themoviedb.org/3/find/{imdb_id}"
         params = {
@@ -252,14 +235,16 @@ def get_tmdb_id(imdb_id, api_key):
         data = response.json()
         
         if data.get('movie_results'):
-            return data['movie_results'][0]['id'], 'movie'
+            result = data['movie_results'][0]
+            return result['id'], 'movie', result.get('title', ''), result.get('release_date', '')[:4]
         elif data.get('tv_results'):
-            return data['tv_results'][0]['id'], 'tv'
+            result = data['tv_results'][0]
+            return result['id'], 'tv', result.get('name', ''), result.get('first_air_date', '')[:4]
         
-        return None, None
+        return None, None, None, None
     except Exception as e:
-        add_log(f"Error converting IMDB to TMDB ID for {imdb_id}: {str(e)}", 'error')
-        return None, None
+        add_log(f"Error getting TMDB data for {imdb_id}: {str(e)}", 'error')
+        return None, None, None, None
 
 def check_streaming_availability(tmdb_id, media_type, api_key, region, provider_ids):
     try:
@@ -285,35 +270,100 @@ def check_streaming_availability(tmdb_id, media_type, api_key, region, provider_
         add_log(f"Error checking streaming availability: {str(e)}", 'warning')
         return False, []
 
-def add_to_plex_watchlist(imdb_id, plex_token):
+def search_plex_by_title(title, year, plex_token):
+    """Search Plex discover for a movie/show by title"""
     try:
         headers = {
             'X-Plex-Token': plex_token,
             'Accept': 'application/json'
         }
         
-        search_url = f"https://metadata.provider.plex.tv/library/metadata/matches"
+        search_url = "https://discover.provider.plex.tv/library/metadata/search"
         params = {
-            'type': '1',
-            'guid': f'imdb://{imdb_id}'
+            'query': f"{title} {year}" if year else title,
+            'limit': 10,
+            'searchTypes': 'movies,tv'
         }
         
         response = requests.get(search_url, headers=headers, params=params, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            if data.get('MediaContainer', {}).get('Metadata'):
-                rating_key = data['MediaContainer']['Metadata'][0]['ratingKey']
-                
-                watchlist_url = f"https://metadata.provider.plex.tv/actions/addToWatchlist"
-                params = {'ratingKey': rating_key}
-                
-                response = requests.put(watchlist_url, headers=headers, params=params, timeout=10)
-                return response.status_code == 200
+            results = data.get('MediaContainer', {}).get('SearchResults', [])
+            
+            for result_group in results:
+                if 'SearchResult' in result_group:
+                    for item in result_group['SearchResult']:
+                        metadata = item.get('Metadata', {})
+                        if metadata:
+                            return metadata.get('ratingKey')
+        
+        return None
+    except Exception as e:
+        add_log(f"Error searching Plex: {str(e)}", 'warning')
+        return None
+
+def verify_plex_item_imdb(rating_key, imdb_id, plex_token):
+    """Verify that a Plex item matches the IMDB ID"""
+    try:
+        headers = {
+            'X-Plex-Token': plex_token,
+            'Accept': 'application/json'
+        }
+        
+        url = f"https://discover.provider.plex.tv/library/metadata/{rating_key}"
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            metadata = data.get('MediaContainer', {}).get('Metadata', [])
+            if metadata:
+                guids = metadata[0].get('Guid', [])
+                for guid in guids:
+                    if guid.get('id', '').endswith(imdb_id):
+                        return True
         
         return False
     except Exception as e:
+        add_log(f"Error verifying Plex item: {str(e)}", 'warning')
+        return False
+
+def add_to_plex_watchlist(imdb_id, title, year, plex_token):
+    """Add item to Plex watchlist using the correct API"""
+    try:
+        # Search for the item by title
+        rating_key = search_plex_by_title(title, year, plex_token)
+        
+        if not rating_key:
+            add_log(f"Could not find '{title}' in Plex discover", 'warning')
+            return False
+        
+        # Verify it matches the IMDB ID
+        if not verify_plex_item_imdb(rating_key, imdb_id, plex_token):
+            add_log(f"Found item but IMDB ID doesn't match for '{title}'", 'warning')
+            return False
+        
+        # Add to watchlist using the correct endpoint
+        headers = {
+            'X-Plex-Token': plex_token,
+            'Accept': 'application/json'
+        }
+        
+        watchlist_url = f"https://discover.provider.plex.tv/actions/addToWatchlist"
+        params = {'ratingKey': rating_key}
+        
+        response = requests.put(watchlist_url, headers=headers, params=params, timeout=10)
+        
+        if response.status_code in [200, 204]:
+            return True
+        
+        add_log(f"Plex API returned status {response.status_code} for '{title}'", 'warning')
+        return False
+        
+    except Exception as e:
         add_log(f"Error adding to Plex watchlist: {str(e)}", 'error')
+        import traceback
+        add_log(f"Traceback: {traceback.format_exc()}", 'error')
         return False
 
 def sync_watchlist():
@@ -346,12 +396,14 @@ def sync_watchlist():
         processed += 1
         add_log(f"Processing {processed}/{len(items)}: {item['title']}", 'info')
         
-        tmdb_id, media_type = get_tmdb_id(item['imdb_id'], config['tmdbApiKey'])
+        # Get TMDB data (includes title and year)
+        tmdb_id, media_type, title, year = get_tmdb_data(item['imdb_id'], config['tmdbApiKey'])
         
         if not tmdb_id:
-            add_log(f"Could not find TMDB ID for {item['title']}", 'warning')
+            add_log(f"Could not find TMDB data for {item['imdb_id']}", 'warning')
             continue
         
+        # Check streaming availability
         is_available, providers = check_streaming_availability(
             tmdb_id,
             media_type,
@@ -362,14 +414,15 @@ def sync_watchlist():
         
         if is_available:
             skipped += 1
-            add_log(f"Skipped '{item['title']}' - available on {', '.join(providers)}", 'warning')
+            add_log(f"Skipped '{title}' - available on {', '.join(providers)}", 'warning')
             continue
         
-        if add_to_plex_watchlist(item['imdb_id'], config['plexToken']):
+        # Add to Plex watchlist
+        if add_to_plex_watchlist(item['imdb_id'], title, year, config['plexToken']):
             added += 1
-            add_log(f"Added '{item['title']}' to Plex watchlist", 'success')
+            add_log(f"Added '{title}' to Plex watchlist", 'success')
         else:
-            add_log(f"Failed to add '{item['title']}' to Plex watchlist", 'error')
+            add_log(f"Failed to add '{title}' to Plex watchlist", 'error')
         
         time.sleep(0.5)
     
