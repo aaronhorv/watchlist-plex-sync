@@ -22,7 +22,7 @@ You'll need:
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/imdb-plex-sync.git
+git clone https://github.com/aaronhorv/imdb-plex-sync.git
 cd imdb-plex-sync
 ```
 
