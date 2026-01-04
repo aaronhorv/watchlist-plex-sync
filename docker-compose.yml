@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  imdb-plex-sync:
+    build: .
+    container_name: imdb-plex-sync
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config:/config
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped
