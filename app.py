@@ -13,6 +13,7 @@ app = Flask(__name__)
 
 CONFIG_FILE = '/config/config.json'
 LOGS_FILE = '/config/logs.json'
+RESULTS_FILE = '/config/sync_results.json'
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -30,6 +31,17 @@ def save_config(config):
     os.makedirs('/config', exist_ok=True)
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2)
+
+def load_sync_results():
+    if os.path.exists(RESULTS_FILE):
+        with open(RESULTS_FILE, 'r') as f:
+            return json.load(f)
+    return []
+
+def save_sync_results(results):
+    os.makedirs('/config', exist_ok=True)
+    with open(RESULTS_FILE, 'w') as f:
+        json.dump(results, f, indent=2)
 
 def add_log(message, log_type='info'):
     logs = []
@@ -74,7 +86,6 @@ def get_imdb_export_data(user_id):
         
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Try CSV export first
         list_id = None
         list_elements = soup.find_all(attrs={'data-list-id': True})
         if list_elements:
@@ -278,25 +289,38 @@ def search_plex_by_title(title, year, plex_token):
             'Accept': 'application/json'
         }
         
-        search_url = "https://discover.provider.plex.tv/library/metadata/search"
+        # Use the correct search endpoint
+        search_url = "https://discover.provider.plex.tv/library/search"
+        
+        # Try with year first
+        search_query = f"{title} {year}" if year else title
         params = {
-            'query': f"{title} {year}" if year else title,
+            'query': search_query,
             'limit': 10,
-            'searchTypes': 'movies,tv'
+            'searchTypes': 'movies,tv',
+            'includeMetadata': 1
         }
         
         response = requests.get(search_url, headers=headers, params=params, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            results = data.get('MediaContainer', {}).get('SearchResults', [])
+            metadata_list = data.get('MediaContainer', {}).get('Metadata', [])
             
-            for result_group in results:
-                if 'SearchResult' in result_group:
-                    for item in result_group['SearchResult']:
-                        metadata = item.get('Metadata', {})
-                        if metadata:
-                            return metadata.get('ratingKey')
+            if metadata_list:
+                return metadata_list[0].get('ratingKey')
+        
+        # Try without year if first search failed
+        if year:
+            params['query'] = title
+            response = requests.get(search_url, headers=headers, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                metadata_list = data.get('MediaContainer', {}).get('Metadata', [])
+                
+                if metadata_list:
+                    return metadata_list[0].get('ratingKey')
         
         return None
     except Exception as e:
@@ -331,19 +355,16 @@ def verify_plex_item_imdb(rating_key, imdb_id, plex_token):
 def add_to_plex_watchlist(imdb_id, title, year, plex_token):
     """Add item to Plex watchlist using the correct API"""
     try:
-        # Search for the item by title
         rating_key = search_plex_by_title(title, year, plex_token)
         
         if not rating_key:
             add_log(f"Could not find '{title}' in Plex discover", 'warning')
             return False
         
-        # Verify it matches the IMDB ID
         if not verify_plex_item_imdb(rating_key, imdb_id, plex_token):
             add_log(f"Found item but IMDB ID doesn't match for '{title}'", 'warning')
             return False
         
-        # Add to watchlist using the correct endpoint
         headers = {
             'X-Plex-Token': plex_token,
             'Accept': 'application/json'
@@ -391,19 +412,34 @@ def sync_watchlist():
     processed = 0
     added = 0
     skipped = 0
+    results = []
     
     for item in items:
         processed += 1
         add_log(f"Processing {processed}/{len(items)}: {item['title']}", 'info')
         
-        # Get TMDB data (includes title and year)
+        result = {
+            'imdb_id': item['imdb_id'],
+            'original_title': item['title'],
+            'title': None,
+            'year': None,
+            'status': 'processing',
+            'streaming_services': [],
+            'error': None
+        }
+        
         tmdb_id, media_type, title, year = get_tmdb_data(item['imdb_id'], config['tmdbApiKey'])
         
         if not tmdb_id:
+            result['status'] = 'failed'
+            result['error'] = 'Not found in TMDB'
             add_log(f"Could not find TMDB data for {item['imdb_id']}", 'warning')
+            results.append(result)
             continue
         
-        # Check streaming availability
+        result['title'] = title
+        result['year'] = year
+        
         is_available, providers = check_streaming_availability(
             tmdb_id,
             media_type,
@@ -414,17 +450,25 @@ def sync_watchlist():
         
         if is_available:
             skipped += 1
+            result['status'] = 'skipped'
+            result['streaming_services'] = providers
             add_log(f"Skipped '{title}' - available on {', '.join(providers)}", 'warning')
+            results.append(result)
             continue
         
-        # Add to Plex watchlist
         if add_to_plex_watchlist(item['imdb_id'], title, year, config['plexToken']):
             added += 1
+            result['status'] = 'added'
             add_log(f"Added '{title}' to Plex watchlist", 'success')
         else:
+            result['status'] = 'failed'
+            result['error'] = 'Could not add to Plex'
             add_log(f"Failed to add '{title}' to Plex watchlist", 'error')
         
+        results.append(result)
         time.sleep(0.5)
+    
+    save_sync_results(results)
     
     add_log("=" * 50, 'info')
     add_log(f"Sync complete: {processed} processed, {added} added, {skipped} skipped", 'success')
@@ -459,6 +503,10 @@ def get_logs():
             return jsonify(json.load(f))
     return jsonify([])
 
+@app.route('/api/results', methods=['GET'])
+def get_results():
+    return jsonify(load_sync_results())
+
 @app.route('/api/sync', methods=['POST'])
 def trigger_sync():
     threading.Thread(target=sync_watchlist, daemon=True).start()
@@ -466,12 +514,26 @@ def trigger_sync():
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
+    results = load_sync_results()
+    
+    if not results:
+        return jsonify({
+            'lastSync': None,
+            'status': 'idle',
+            'processed': 0,
+            'added': 0,
+            'skipped': 0
+        })
+    
+    added = len([r for r in results if r['status'] == 'added'])
+    skipped = len([r for r in results if r['status'] == 'skipped'])
+    
     return jsonify({
-        'lastSync': None,
-        'status': 'idle',
-        'processed': 0,
-        'added': 0,
-        'skipped': 0
+        'lastSync': datetime.now().isoformat(),
+        'status': 'completed',
+        'processed': len(results),
+        'added': added,
+        'skipped': skipped
     })
 
 if __name__ == '__main__':
