@@ -50,94 +50,194 @@ def add_log(message, log_type='info'):
     
     print(f"[{log_type.upper()}] {message}")
 
-def get_imdb_watchlist(list_url):
-    """Scrape IMDB list page directly"""
+def extract_user_id(url):
+    """Extract user ID from IMDB watchlist URL"""
+    match = re.search(r'user/(ur\d+)', url)
+    if match:
+        return match.group(1)
+    return None
+
+def get_imdb_export_data(user_id):
+    """Get IMDB watchlist data using the export endpoint"""
     try:
-        add_log(f"Fetching IMDB list from: {list_url}", 'info')
+        # IMDB provides an export endpoint for lists
+        export_url = f"https://www.imdb.com/list/export"
         
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': f'https://www.imdb.com/user/{user_id}/watchlist'
+        }
+        
+        # Get the watchlist page first to establish session
+        session = requests.Session()
+        watchlist_url = f"https://www.imdb.com/user/{user_id}/watchlist"
+        
+        add_log(f"Fetching watchlist page: {watchlist_url}", 'info')
+        response = session.get(watchlist_url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        # Try to find the list ID in the page
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Look for data-list-id attribute or list ID in page
+        list_id = None
+        
+        # Method 1: Look in meta tags or data attributes
+        list_elements = soup.find_all(attrs={'data-list-id': True})
+        if list_elements:
+            list_id = list_elements[0].get('data-list-id')
+            add_log(f"Found list ID in data attribute: {list_id}", 'info')
+        
+        # Method 2: Look in the export link if it exists
+        if not list_id:
+            export_link = soup.find('a', href=re.compile(r'/list/export'))
+            if export_link:
+                href = export_link.get('href', '')
+                match = re.search(r'list_id=(ls\d+)', href)
+                if match:
+                    list_id = match.group(1)
+                    add_log(f"Found list ID in export link: {list_id}", 'info')
+        
+        # Method 3: Look for list ID in page scripts or JSON
+        if not list_id:
+            scripts = soup.find_all('script')
+            for script in scripts:
+                if script.string:
+                    match = re.search(r'"list":\s*{\s*"id":\s*"(ls\d+)"', script.string)
+                    if match:
+                        list_id = match.group(1)
+                        add_log(f"Found list ID in script: {list_id}", 'info')
+                        break
+        
+        if list_id:
+            # Try to get CSV export
+            export_url = f"https://www.imdb.com/list/{list_id}/export"
+            add_log(f"Attempting CSV export from: {export_url}", 'info')
+            
+            response = session.get(export_url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                return parse_csv_export(response.text)
+        
+        # Fallback: scrape the page directly
+        add_log("CSV export not available, falling back to page scraping", 'warning')
+        return scrape_watchlist_page(soup, watchlist_url)
+        
+    except Exception as e:
+        add_log(f"Error in get_imdb_export_data: {str(e)}", 'error')
+        import traceback
+        add_log(f"Traceback: {traceback.format_exc()}", 'error')
+        return []
+
+def parse_csv_export(csv_text):
+    """Parse IMDB CSV export"""
+    items = []
+    lines = csv_text.strip().split('\n')
+    
+    if len(lines) < 2:
+        return items
+    
+    # First line is headers
+    headers = lines[0].split(',')
+    
+    # Find the index of the 'Const' column (contains tt ID)
+    const_idx = None
+    title_idx = None
+    
+    for i, header in enumerate(headers):
+        if 'Const' in header:
+            const_idx = i
+        if 'Title' in header:
+            title_idx = i
+    
+    if const_idx is None:
+        add_log("Could not find 'Const' column in CSV", 'error')
+        return items
+    
+    # Parse each line
+    for line in lines[1:]:
+        parts = line.split(',')
+        if len(parts) > const_idx:
+            imdb_id = parts[const_idx].strip('"')
+            title = parts[title_idx].strip('"') if title_idx and len(parts) > title_idx else imdb_id
+            
+            if imdb_id.startswith('tt'):
+                items.append({
+                    'title': title,
+                    'imdb_id': imdb_id,
+                    'link': f"https://www.imdb.com/title/{imdb_id}/"
+                })
+                add_log(f"Found from CSV: {title} ({imdb_id})", 'info')
+    
+    return items
+
+def scrape_watchlist_page(soup, url):
+    """Scrape watchlist page for IMDB IDs"""
+    items = []
+    seen_ids = set()
+    
+    # Look for all title links
+    title_links = soup.find_all('a', href=re.compile(r'/title/tt\d+'))
+    
+    for link in title_links:
+        href = link.get('href', '')
+        imdb_match = re.search(r'/title/(tt\d+)', href)
+        
+        if imdb_match:
+            imdb_id = imdb_match.group(1)
+            
+            if imdb_id in seen_ids:
+                continue
+            seen_ids.add(imdb_id)
+            
+            # Get title
+            title = link.get_text(strip=True)
+            if not title or len(title) < 2:
+                title = f"IMDB:{imdb_id}"
+            
+            items.append({
+                'title': title,
+                'imdb_id': imdb_id,
+                'link': f"https://www.imdb.com/title/{imdb_id}/"
+            })
+            add_log(f"Found from page: {title} ({imdb_id})", 'info')
+    
+    return items
+
+def get_imdb_watchlist(list_url):
+    """Main function to get IMDB watchlist items"""
+    try:
+        # Check if it's a user watchlist or custom list
+        user_id = extract_user_id(list_url)
+        
+        if user_id:
+            add_log(f"Detected personal watchlist for user: {user_id}", 'info')
+            return get_imdb_export_data(user_id)
+        else:
+            # It's a custom list
+            add_log(f"Detected custom list", 'info')
+            return scrape_custom_list(list_url)
+        
+    except Exception as e:
+        add_log(f"Error fetching IMDB watchlist: {str(e)}", 'error')
+        import traceback
+        add_log(f"Traceback: {traceback.format_exc()}", 'error')
+        return []
+
+def scrape_custom_list(list_url):
+    """Scrape a custom IMDB list"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         }
         
         response = requests.get(list_url, headers=headers, timeout=15)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'html.parser')
+        return scrape_watchlist_page(soup, list_url)
         
-        items = []
-        
-        # Look for IMDB IDs in the page
-        # Method 1: Find all links to /title/ttXXXXXXX
-        title_links = soup.find_all('a', href=re.compile(r'/title/tt\d+'))
-        
-        seen_ids = set()
-        for link in title_links:
-            href = link.get('href', '')
-            imdb_match = re.search(r'/title/(tt\d+)', href)
-            
-            if imdb_match:
-                imdb_id = imdb_match.group(1)
-                
-                # Avoid duplicates
-                if imdb_id in seen_ids:
-                    continue
-                seen_ids.add(imdb_id)
-                
-                # Try to get title from the link text or nearby elements
-                title = link.get_text(strip=True)
-                if not title or len(title) < 2:
-                    # Try to find title in parent elements
-                    parent = link.find_parent('div')
-                    if parent:
-                        title_elem = parent.find('h3') or parent.find('a')
-                        if title_elem:
-                            title = title_elem.get_text(strip=True)
-                
-                if not title:
-                    title = f"IMDB:{imdb_id}"
-                
-                items.append({
-                    'title': title,
-                    'imdb_id': imdb_id,
-                    'link': f"https://www.imdb.com/title/{imdb_id}/"
-                })
-                add_log(f"Found: {title} ({imdb_id})", 'info')
-        
-        # Method 2: Look for JSON-LD structured data
-        scripts = soup.find_all('script', type='application/ld+json')
-        for script in scripts:
-            try:
-                data = json.loads(script.string)
-                if isinstance(data, dict) and 'itemListElement' in data:
-                    for item in data['itemListElement']:
-                        if 'item' in item:
-                            item_url = item['item'].get('url', '')
-                            imdb_match = re.search(r'/title/(tt\d+)', item_url)
-                            if imdb_match:
-                                imdb_id = imdb_match.group(1)
-                                if imdb_id not in seen_ids:
-                                    seen_ids.add(imdb_id)
-                                    title = item['item'].get('name', f"IMDB:{imdb_id}")
-                                    items.append({
-                                        'title': title,
-                                        'imdb_id': imdb_id,
-                                        'link': f"https://www.imdb.com/title/{imdb_id}/"
-                                    })
-                                    add_log(f"Found: {title} ({imdb_id})", 'info')
-            except:
-                continue
-        
-        add_log(f"Successfully found {len(items)} items from IMDB list", 'success')
-        return items
-        
-    except requests.exceptions.RequestException as e:
-        add_log(f"Network error fetching IMDB list: {str(e)}", 'error')
-        return []
     except Exception as e:
-        add_log(f"Error fetching IMDB list: {str(e)}", 'error')
-        import traceback
-        add_log(f"Traceback: {traceback.format_exc()}", 'error')
+        add_log(f"Error scraping custom list: {str(e)}", 'error')
         return []
 
 def get_tmdb_id(imdb_id, api_key):
@@ -233,10 +333,10 @@ def sync_watchlist():
     items = get_imdb_watchlist(config['imdbListUrl'])
     
     if not items:
-        add_log("No items found in IMDB list. Check if list is public and has items.", 'warning')
+        add_log("No items found in IMDB watchlist. Check if list is public and has items.", 'warning')
         return
     
-    add_log(f"Found {len(items)} items in IMDB list", 'info')
+    add_log(f"Found {len(items)} items in IMDB watchlist", 'info')
     
     processed = 0
     added = 0
