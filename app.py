@@ -487,7 +487,7 @@ def sync_watchlist():
             add_log(f"Failed to add '{title}' to Plex watchlist", 'error')
         
         results.append(result)
-        time.sleep(0.5)
+        time.sleep(1)
     
     save_sync_results(results)
     
