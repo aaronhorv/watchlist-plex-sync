@@ -281,58 +281,6 @@ def check_streaming_availability(tmdb_id, media_type, api_key, region, provider_
         add_log(f"Error checking streaming availability: {str(e)}", 'warning')
         return False, []
 
-def search_plex_by_title(title, year, plex_token):
-    """Search Plex discover for a movie/show by title"""
-    try:
-        headers = {
-            'X-Plex-Token': plex_token,
-            'Accept': 'application/json'
-        }
-        
-        search_url = "https://discover.provider.plex.tv/library/search"
-        
-        search_query = f"{title} {year}" if year else title
-        params = {
-            'query': search_query,
-            'limit': 10,
-            'searchTypes': 'movies,tv',
-            'includeMetadata': 1,
-            'searchProviders': 'discover,plexAVOD'  # <-- ADD THIS LINE
-        }
-        
-        response = requests.get(search_url, headers=headers, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Parse the nested SearchResults structure
-            search_results = data.get('MediaContainer', {}).get('SearchResults', [])
-            for result_group in search_results:
-                if 'SearchResult' in result_group:
-                    for item in result_group['SearchResult']:
-                        metadata = item.get('Metadata', {})
-                        if metadata:
-                            return metadata.get('ratingKey')
-        
-        # Try without year if first search failed
-        if year:
-            params['query'] = title
-            response = requests.get(search_url, headers=headers, params=params, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                search_results = data.get('MediaContainer', {}).get('SearchResults', [])
-                for result_group in search_results:
-                    if 'SearchResult' in result_group:
-                        for item in result_group['SearchResult']:
-                            metadata = item.get('Metadata', {})
-                            if metadata:
-                                return metadata.get('ratingKey')
-        
-        return None
-    except Exception as e:
-        add_log(f"Error searching Plex: {str(e)}", 'warning')
-        return None
 
 def verify_plex_item_imdb(rating_key, imdb_id, plex_token):
     """Verify that a Plex item matches the IMDB ID"""
@@ -359,18 +307,82 @@ def verify_plex_item_imdb(rating_key, imdb_id, plex_token):
         add_log(f"Error verifying Plex item: {str(e)}", 'warning')
         return False
 
+def search_plex_by_title(title, year, plex_token):
+    """Search Plex discover for a movie/show by title"""
+    try:
+        headers = {
+            'X-Plex-Token': plex_token,
+            'Accept': 'application/json'
+        }
+        
+        search_url = "https://discover.provider.plex.tv/library/search"
+        
+        search_query = f"{title} {year}" if year else title
+        params = {
+            'query': search_query,
+            'limit': 10,
+            'searchTypes': 'movies,tv',
+            'includeMetadata': 1,
+            'searchProviders': 'discover,plexAVOD'
+        }
+        
+        add_log(f"Searching Plex for: '{search_query}'", 'info')
+        response = requests.get(search_url, headers=headers, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            search_results = data.get('MediaContainer', {}).get('SearchResults', [])
+            
+            for result_group in search_results:
+                if 'SearchResult' in result_group:
+                    for item in result_group['SearchResult']:
+                        metadata = item.get('Metadata', {})
+                        if metadata:
+                            rating_key = metadata.get('ratingKey')
+                            found_title = metadata.get('title', '')
+                            found_year = metadata.get('year', '')
+                            add_log(f"Found in Plex: '{found_title}' ({found_year}) - ratingKey: {rating_key}", 'info')
+                            return rating_key
+        
+        # Try without year if first search failed
+        if year:
+            add_log(f"Trying search without year: '{title}'", 'info')
+            params['query'] = title
+            response = requests.get(search_url, headers=headers, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                search_results = data.get('MediaContainer', {}).get('SearchResults', [])
+                
+                for result_group in search_results:
+                    if 'SearchResult' in result_group:
+                        for item in result_group['SearchResult']:
+                            metadata = item.get('Metadata', {})
+                            if metadata:
+                                rating_key = metadata.get('ratingKey')
+                                found_title = metadata.get('title', '')
+                                found_year = metadata.get('year', '')
+                                add_log(f"Found in Plex (no year): '{found_title}' ({found_year}) - ratingKey: {rating_key}", 'info')
+                                return rating_key
+        
+        add_log(f"No results found in Plex for '{title}'", 'warning')
+        return None
+    except Exception as e:
+        add_log(f"Error searching Plex: {str(e)}", 'warning')
+        return None
+
 def add_to_plex_watchlist(imdb_id, title, year, plex_token):
     """Add item to Plex watchlist using the correct API"""
     try:
         rating_key = search_plex_by_title(title, year, plex_token)
         
         if not rating_key:
-            add_log(f"Could not find '{title}' in Plex discover", 'warning')
             return False
         
-        if not verify_plex_item_imdb(rating_key, imdb_id, plex_token):
-            add_log(f"Found item but IMDB ID doesn't match for '{title}'", 'warning')
-            return False
+        # Try to verify IMDB ID, but don't fail if we can't
+        imdb_matches = verify_plex_item_imdb(rating_key, imdb_id, plex_token)
+        if not imdb_matches:
+            add_log(f"Warning: Could not verify IMDB ID for '{title}', but attempting to add anyway", 'warning')
         
         headers = {
             'X-Plex-Token': plex_token,
@@ -380,12 +392,14 @@ def add_to_plex_watchlist(imdb_id, title, year, plex_token):
         watchlist_url = f"https://discover.provider.plex.tv/actions/addToWatchlist"
         params = {'ratingKey': rating_key}
         
+        add_log(f"Attempting to add '{title}' with ratingKey {rating_key}", 'info')
         response = requests.put(watchlist_url, headers=headers, params=params, timeout=10)
+        
+        add_log(f"Plex API response: {response.status_code} - {response.text[:200]}", 'info')
         
         if response.status_code in [200, 204]:
             return True
         
-        add_log(f"Plex API returned status {response.status_code} for '{title}'", 'warning')
         return False
         
     except Exception as e:
