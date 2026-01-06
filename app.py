@@ -297,10 +297,22 @@ def check_streaming_availability(tmdb_id, media_type, api_key, streaming_service
         # Group services by region for efficiency
         regions_to_check = {}
         for service in streaming_services:
-            region = service.get('region', 'US')
+            # FIX: Handle both old format (int) and new format (dict with id/region)
+            if isinstance(service, int):
+                # Old format: just provider IDs as integers
+                region = 'US'
+                service_obj = {'id': service, 'region': region}
+            elif isinstance(service, dict):
+                # New format: {id: X, region: Y}
+                region = service.get('region', 'US')
+                service_obj = service
+            else:
+                add_log(f"Warning: Invalid service format: {service}", 'warning')
+                continue
+            
             if region not in regions_to_check:
                 regions_to_check[region] = []
-            regions_to_check[region].append(service)
+            regions_to_check[region].append(service_obj)
         
         # Check each region
         for region, services in regions_to_check.items():
