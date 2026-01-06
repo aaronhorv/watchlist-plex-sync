@@ -407,15 +407,77 @@ def get_imdb_list_data(list_id):
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': f'https://www.imdb.com/list/{list_id}/',
         }
         
         add_log(f"Using list ID: {list_id}", 'info')
         
-        # Method 1: CSV Export (gets ALL items in one request - BEST!)
+        # Method 1: Try IMDB's internal list API (powers the infinite scroll)
+        # This is the API that loads more items as you scroll
+        add_log(f"Attempting IMDB list API...", 'info')
+        
+        all_items = []
+        seen_ids = set()
+        page = 1
+        
+        while page <= 10:  # Max 10 pages * ~50 items = 500 items
+            # IMDB's internal API endpoint
+            api_url = f"https://www.imdb.com/list/{list_id}/_ajax"
+            params = {
+                'page': page,
+                'sort': 'list_order:asc',
+            }
+            
+            add_log(f"Fetching API page {page}...", 'info')
+            
+            try:
+                api_response = session.get(api_url, params=params, headers=headers, timeout=20)
+                
+                if api_response.status_code == 404:
+                    add_log(f"API endpoint not found, trying alternate method", 'warning')
+                    break
+                elif api_response.status_code != 200:
+                    add_log(f"API returned {api_response.status_code}", 'warning')
+                    break
+                
+                # Parse the HTML response from the AJAX endpoint
+                page_soup = BeautifulSoup(api_response.content, 'html.parser')
+                page_items = scrape_watchlist_page(page_soup, api_url)
+                
+                # Filter duplicates
+                new_items = [item for item in page_items if item['imdb_id'] not in seen_ids]
+                for item in new_items:
+                    seen_ids.add(item['imdb_id'])
+                
+                add_log(f"  API page {page}: {len(page_items)} items, {len(new_items)} new (total: {len(all_items) + len(new_items)})", 'info')
+                
+                if not new_items:
+                    add_log(f"No new items on page {page}, stopping", 'info')
+                    break
+                
+                all_items.extend(new_items)
+                
+                # If we got fewer than expected items, probably last page
+                if len(page_items) < 25:
+                    add_log(f"Got {len(page_items)} items, likely last page", 'info')
+                    break
+                
+                page += 1
+                time.sleep(0.3)
+                
+            except Exception as e:
+                add_log(f"API error on page {page}: {e}", 'error')
+                break
+        
+        if all_items and len(all_items) > 25:
+            add_log(f"✓ IMDB API successful: {len(all_items)} items", 'success')
+            return all_items
+        
+        # Method 2: Try CSV Export
         export_url = f"https://www.imdb.com/list/{list_id}/export"
-        add_log(f"Attempting CSV export: {export_url}", 'info')
+        add_log(f"API failed, attempting CSV export: {export_url}", 'info')
         
         try:
             csv_response = session.get(export_url, headers=headers, timeout=20)
@@ -423,27 +485,55 @@ def get_imdb_list_data(list_id):
             
             if csv_response.status_code == 200 and len(csv_response.text) > 200:
                 csv_items = parse_csv_export(csv_response.text)
-                if csv_items and len(csv_items) > 20:  # Should get all items
+                if csv_items and len(csv_items) > 20:
                     add_log(f"✓ CSV export successful: {len(csv_items)} items", 'success')
                     return csv_items
-                else:
-                    add_log(f"CSV parse returned only {len(csv_items)} items", 'warning')
         except Exception as e:
             add_log(f"CSV export error: {e}", 'warning')
         
-        # Method 2: Paginate through list with ?start= parameter
-        add_log(f"CSV failed, attempting list pagination...", 'info')
+        # Method 3: Try different view modes on main list page
+        add_log(f"Trying different view modes...", 'info')
+        
+        view_modes = ['detail', 'compact', 'grid']
+        best_items = []
+        
+        for view_mode in view_modes:
+            try:
+                list_url = f"https://www.imdb.com/list/{list_id}/"
+                params = {'view': view_mode, 'sort': 'list_order,asc'}
+                
+                add_log(f"Trying view={view_mode}...", 'info')
+                response = session.get(list_url, params=params, headers=headers, timeout=20)
+                
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    items = scrape_watchlist_page(soup, list_url)
+                    
+                    add_log(f"  view={view_mode} found {len(items)} items", 'info')
+                    
+                    if len(items) > len(best_items):
+                        best_items = items
+                
+                time.sleep(0.3)
+            except Exception as e:
+                add_log(f"Error with view={view_mode}: {e}", 'error')
+        
+        if best_items:
+            add_log(f"Best view mode found {len(best_items)} items", 'info')
+            return best_items
+        
+        # Method 4: Last resort - regular pagination
+        add_log(f"Attempting regular pagination...", 'warning')
         
         all_items = []
         seen_ids = set()
         start = 1
         
-        while start <= 500:  # Safety: max 10 pages * 50 items = 500 items
+        while start <= 500:
             list_url = f"https://www.imdb.com/list/{list_id}/"
             params = {
                 'sort': 'list_order,asc',
                 'start': start,
-                'view': 'detail'
             }
             
             add_log(f"Fetching list page start={start}...", 'info')
@@ -452,7 +542,6 @@ def get_imdb_list_data(list_id):
                 page_response = session.get(list_url, params=params, headers=headers, timeout=20)
                 
                 if page_response.status_code != 200:
-                    add_log(f"List page returned {page_response.status_code}", 'warning')
                     break
                 
                 page_soup = BeautifulSoup(page_response.content, 'html.parser')
@@ -466,15 +555,12 @@ def get_imdb_list_data(list_id):
                 add_log(f"  start={start}: {len(page_items)} items, {len(new_items)} new (total: {len(all_items) + len(new_items)})", 'info')
                 
                 if not new_items:
-                    add_log(f"No new items at start={start}, stopping", 'info')
                     break
                 
                 all_items.extend(new_items)
                 
-                # IMDB shows about 50 items per page on list views
                 start += 50
                 
-                # If we got fewer than 50 items, we're probably on the last page
                 if len(page_items) < 50:
                     add_log(f"Got {len(page_items)} items (less than 50), likely last page", 'info')
                     break
@@ -488,21 +574,6 @@ def get_imdb_list_data(list_id):
         if all_items:
             add_log(f"✓ List pagination successful: {len(all_items)} items", 'success')
             return all_items
-        
-        # Method 3: Try compact view as last resort
-        add_log(f"Trying compact view...", 'warning')
-        compact_url = f"https://www.imdb.com/list/{list_id}/?view=compact&sort=list_order,asc"
-        
-        try:
-            response = session.get(compact_url, headers=headers, timeout=20)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                items = scrape_watchlist_page(soup, compact_url)
-                if items:
-                    add_log(f"Compact view found {len(items)} items", 'info')
-                    return items
-        except Exception as e:
-            add_log(f"Compact mode error: {e}", 'error')
         
         add_log("All methods failed for list", 'error')
         return []
