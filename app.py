@@ -401,29 +401,82 @@ def get_imdb_watchlist(list_url):
         return []
 
 def get_imdb_list_data(list_id):
-    """Get IMDB list data directly using list ID - MOST RELIABLE METHOD"""
+    """Get IMDB list data directly using list ID - Uses RSS feed like Radarr"""
     try:
         session = requests.Session()
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Referer': f'https://www.imdb.com/list/{list_id}/',
         }
         
         add_log(f"Using list ID: {list_id}", 'info')
         
-        # Method 1: Try IMDB's internal list API (powers the infinite scroll)
-        # This is the API that loads more items as you scroll
-        add_log(f"Attempting IMDB list API...", 'info')
+        # Method 1: RSS Feed (THIS IS WHAT RADARR USES!)
+        # RSS feeds contain ALL items in the list
+        rss_url = f"https://rss.imdb.com/list/{list_id}"
+        add_log(f"Attempting RSS feed (Radarr method): {rss_url}", 'info')
+        
+        try:
+            rss_response = session.get(rss_url, headers=headers, timeout=20)
+            add_log(f"RSS response: {rss_response.status_code}, {len(rss_response.text)} bytes", 'info')
+            
+            if rss_response.status_code == 200:
+                # Parse RSS/XML
+                soup = BeautifulSoup(rss_response.content, 'xml')
+                
+                # Find all items in the RSS feed
+                items = []
+                seen_ids = set()
+                
+                # RSS feeds use <item> tags
+                rss_items = soup.find_all('item')
+                add_log(f"RSS feed contains {len(rss_items)} items", 'info')
+                
+                for rss_item in rss_items:
+                    # Get the title link which contains the IMDB ID
+                    link = rss_item.find('link')
+                    title_tag = rss_item.find('title')
+                    
+                    if link and link.text:
+                        imdb_match = re.search(r'/title/(tt\d+)', link.text)
+                        if imdb_match:
+                            imdb_id = imdb_match.group(1)
+                            
+                            if imdb_id in seen_ids:
+                                continue
+                            seen_ids.add(imdb_id)
+                            
+                            title = title_tag.text if title_tag else f"IMDB:{imdb_id}"
+                            
+                            items.append({
+                                'title': title,
+                                'imdb_id': imdb_id,
+                                'link': f"https://www.imdb.com/title/{imdb_id}/"
+                            })
+                
+                if items and len(items) > 25:
+                    add_log(f"✓ RSS feed successful: {len(items)} items (Radarr method works!)", 'success')
+                    return items
+                elif items:
+                    add_log(f"RSS feed only returned {len(items)} items", 'warning')
+                else:
+                    add_log(f"RSS feed parsing failed", 'warning')
+                    
+        except Exception as e:
+            add_log(f"RSS feed error: {e}", 'warning')
+            import traceback
+            add_log(f"RSS traceback: {traceback.format_exc()}", 'error')
+        
+        # Method 2: Try IMDB's internal list API (powers the infinite scroll)
+        add_log(f"RSS failed, attempting IMDB list API...", 'info')
         
         all_items = []
         seen_ids = set()
         page = 1
         
-        while page <= 10:  # Max 10 pages * ~50 items = 500 items
-            # IMDB's internal API endpoint
+        while page <= 10:
             api_url = f"https://www.imdb.com/list/{list_id}/_ajax"
             params = {
                 'page': page,
@@ -436,17 +489,15 @@ def get_imdb_list_data(list_id):
                 api_response = session.get(api_url, params=params, headers=headers, timeout=20)
                 
                 if api_response.status_code == 404:
-                    add_log(f"API endpoint not found, trying alternate method", 'warning')
+                    add_log(f"API endpoint not found", 'warning')
                     break
                 elif api_response.status_code != 200:
                     add_log(f"API returned {api_response.status_code}", 'warning')
                     break
                 
-                # Parse the HTML response from the AJAX endpoint
                 page_soup = BeautifulSoup(api_response.content, 'html.parser')
                 page_items = scrape_watchlist_page(page_soup, api_url)
                 
-                # Filter duplicates
                 new_items = [item for item in page_items if item['imdb_id'] not in seen_ids]
                 for item in new_items:
                     seen_ids.add(item['imdb_id'])
@@ -454,14 +505,11 @@ def get_imdb_list_data(list_id):
                 add_log(f"  API page {page}: {len(page_items)} items, {len(new_items)} new (total: {len(all_items) + len(new_items)})", 'info')
                 
                 if not new_items:
-                    add_log(f"No new items on page {page}, stopping", 'info')
                     break
                 
                 all_items.extend(new_items)
                 
-                # If we got fewer than expected items, probably last page
                 if len(page_items) < 25:
-                    add_log(f"Got {len(page_items)} items, likely last page", 'info')
                     break
                 
                 page += 1
@@ -475,13 +523,12 @@ def get_imdb_list_data(list_id):
             add_log(f"✓ IMDB API successful: {len(all_items)} items", 'success')
             return all_items
         
-        # Method 2: Try CSV Export
+        # Method 3: CSV Export
         export_url = f"https://www.imdb.com/list/{list_id}/export"
-        add_log(f"API failed, attempting CSV export: {export_url}", 'info')
+        add_log(f"Attempting CSV export: {export_url}", 'info')
         
         try:
             csv_response = session.get(export_url, headers=headers, timeout=20)
-            add_log(f"CSV response: {csv_response.status_code}, {len(csv_response.text)} bytes", 'info')
             
             if csv_response.status_code == 200 and len(csv_response.text) > 200:
                 csv_items = parse_csv_export(csv_response.text)
@@ -491,38 +538,7 @@ def get_imdb_list_data(list_id):
         except Exception as e:
             add_log(f"CSV export error: {e}", 'warning')
         
-        # Method 3: Try different view modes on main list page
-        add_log(f"Trying different view modes...", 'info')
-        
-        view_modes = ['detail', 'compact', 'grid']
-        best_items = []
-        
-        for view_mode in view_modes:
-            try:
-                list_url = f"https://www.imdb.com/list/{list_id}/"
-                params = {'view': view_mode, 'sort': 'list_order,asc'}
-                
-                add_log(f"Trying view={view_mode}...", 'info')
-                response = session.get(list_url, params=params, headers=headers, timeout=20)
-                
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    items = scrape_watchlist_page(soup, list_url)
-                    
-                    add_log(f"  view={view_mode} found {len(items)} items", 'info')
-                    
-                    if len(items) > len(best_items):
-                        best_items = items
-                
-                time.sleep(0.3)
-            except Exception as e:
-                add_log(f"Error with view={view_mode}: {e}", 'error')
-        
-        if best_items:
-            add_log(f"Best view mode found {len(best_items)} items", 'info')
-            return best_items
-        
-        # Method 4: Last resort - regular pagination
+        # Method 4: Regular pagination as last resort
         add_log(f"Attempting regular pagination...", 'warning')
         
         all_items = []
@@ -536,8 +552,6 @@ def get_imdb_list_data(list_id):
                 'start': start,
             }
             
-            add_log(f"Fetching list page start={start}...", 'info')
-            
             try:
                 page_response = session.get(list_url, params=params, headers=headers, timeout=20)
                 
@@ -547,7 +561,6 @@ def get_imdb_list_data(list_id):
                 page_soup = BeautifulSoup(page_response.content, 'html.parser')
                 page_items = scrape_watchlist_page(page_soup, list_url)
                 
-                # Filter duplicates
                 new_items = [item for item in page_items if item['imdb_id'] not in seen_ids]
                 for item in new_items:
                     seen_ids.add(item['imdb_id'])
@@ -562,20 +575,19 @@ def get_imdb_list_data(list_id):
                 start += 50
                 
                 if len(page_items) < 50:
-                    add_log(f"Got {len(page_items)} items (less than 50), likely last page", 'info')
                     break
                 
             except Exception as e:
-                add_log(f"Error fetching list page: {e}", 'error')
+                add_log(f"Error: {e}", 'error')
                 break
             
             time.sleep(0.5)
         
         if all_items:
-            add_log(f"✓ List pagination successful: {len(all_items)} items", 'success')
+            add_log(f"✓ List pagination: {len(all_items)} items", 'success')
             return all_items
         
-        add_log("All methods failed for list", 'error')
+        add_log("All methods failed", 'error')
         return []
         
     except Exception as e:
