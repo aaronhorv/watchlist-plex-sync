@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template, request, jsonify
 import requests
 from bs4 import BeautifulSoup
 import json
@@ -77,35 +77,94 @@ def scrape_watchlist_page(soup, url, html_content=None):
     if html_content is None:
         html_content = str(soup)
     
-    # PRIMARY METHOD: Extract titles from embedded JSON (gets ALL 248+ items!)
-    # Titles are stored as: "titleText":{"text":"TITLE_HERE"}
-    # This regex matches the pattern and extracts just the title text
-    title_pattern = r'"titleText"[^}]*"text":"([^"]*)"'
-    title_matches = re.findall(title_pattern, html_content)
+    # PRIMARY METHOD: Extract title+ID pairs from JSON structure
+    # The JSON has objects with both titleText and an ID reference
+    # Pattern: find sections that contain both titleText and title ID
     
-    add_log(f"DEBUG: Found {len(title_matches)} titles in JSON data", 'info')
+    # Look for patterns like: {"titleText":{"text":"TITLE"}...some json..."id":"tt1234567"}
+    # or reverse: {"id":"tt1234567"...some json..."titleText":{"text":"TITLE"}}
     
-    # Also extract IMDB IDs from the same JSON structure
-    # IDs appear as: /title/tt1234567/
-    id_pattern = r'/title/(tt\d+)/'
-    id_matches = re.findall(id_pattern, html_content)
+    add_log("DEBUG: Attempting JSON extraction...", 'info')
     
-    add_log(f"DEBUG: Found {len(id_matches)} IMDB IDs in HTML", 'info')
+    # Method 1: Try to extract from structured JSON blocks
+    # Find all title/ID pairs in proximity
+    import json as json_module
     
-    # Match titles with IDs (they appear in the same order in the JSON structure)
-    for i, imdb_id in enumerate(id_matches):
-        if imdb_id in seen_ids:
+    # Try to find JSON-LD or embedded JSON with full objects
+    script_tags = soup.find_all('script', type='application/json')
+    
+    for script in script_tags:
+        try:
+            data = json_module.loads(script.string)
+            # Navigate through the nested structure
+            if isinstance(data, dict):
+                # Look for lists that might contain our movies
+                def extract_from_dict(obj, items_list, seen):
+                    if isinstance(obj, dict):
+                        # Check if this object has both titleText and an ID
+                        if 'titleText' in obj and 'id' in obj:
+                            title_obj = obj.get('titleText', {})
+                            title = title_obj.get('text', '') if isinstance(title_obj, dict) else str(title_obj)
+                            imdb_id = obj.get('id', '')
+                            
+                            if title and imdb_id.startswith('tt') and imdb_id not in seen:
+                                seen.add(imdb_id)
+                                items_list.append({
+                                    'title': title,
+                                    'imdb_id': imdb_id,
+                                    'link': f"https://www.imdb.com/title/{imdb_id}/"
+                                })
+                        
+                        # Recursively search nested dicts and lists
+                        for value in obj.values():
+                            extract_from_dict(value, items_list, seen)
+                    elif isinstance(obj, list):
+                        for item in obj:
+                            extract_from_dict(item, items_list, seen)
+                
+                extract_from_dict(data, items, seen_ids)
+        except:
             continue
-        seen_ids.add(imdb_id)
+    
+    add_log(f"DEBUG: JSON parsing found {len(items)} items", 'info')
+    
+    # Method 2: If JSON parsing didn't work, use regex on the HTML
+    if len(items) < 50:
+        add_log("DEBUG: Trying regex-based extraction...", 'info')
         
-        # Get corresponding title if available
-        title = title_matches[i] if i < len(title_matches) else f"IMDB:{imdb_id}"
+        # Look for the pattern where titleText and id are close together
+        # Example: "titleText":{"text":"Movie Name"}...some stuff..."id":"tt1234567"
+        pattern = r'"titleText":\s*\{\s*"text":\s*"([^"]+)"\s*\}[^}]*?"id":\s*"(tt\d+)"'
+        matches = re.findall(pattern, html_content, re.DOTALL)
         
-        items.append({
-            'title': title,
-            'imdb_id': imdb_id,
-            'link': f"https://www.imdb.com/title/{imdb_id}/"
-        })
+        for title, imdb_id in matches:
+            if imdb_id not in seen_ids:
+                seen_ids.add(imdb_id)
+                items.append({
+                    'title': title,
+                    'imdb_id': imdb_id,
+                    'link': f"https://www.imdb.com/title/{imdb_id}/"
+                })
+        
+        add_log(f"DEBUG: Regex extraction found {len(items)} items", 'info')
+    
+    # Method 3: If still not enough, try reverse pattern (id before titleText)
+    if len(items) < 50:
+        add_log("DEBUG: Trying reverse regex pattern...", 'info')
+        
+        pattern = r'"id":\s*"(tt\d+)"[^}]*?"titleText":\s*\{\s*"text":\s*"([^"]+)"\s*\}'
+        matches = re.findall(pattern, html_content, re.DOTALL)
+        
+        for imdb_id, title in matches:
+            if imdb_id not in seen_ids:
+                seen_ids.add(imdb_id)
+                items.append({
+                    'title': title,
+                    'imdb_id': imdb_id,
+                    'link': f"https://www.imdb.com/title/{imdb_id}/"
+                })
+        
+        add_log(f"DEBUG: Reverse pattern found {len(items)} total items", 'info')
     
     add_log(f"DEBUG: Extracted {len(items)} unique items from JSON extraction", 'info')
     
@@ -622,65 +681,7 @@ def schedule_sync():
 
 @app.route('/')
 def index():
-    html = '''<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IMDB to Plex Sync</title><style>
-body{font-family:sans-serif;max-width:1200px;margin:20px auto;padding:20px;background:#f5f5f5}
-.card{background:white;padding:20px;margin:20px 0;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
-h1{color:#333}h2{color:#555;margin-top:0}
-input{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:4px}
-button{background:#007bff;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;margin:5px}
-button:hover{background:#0056b3}
-.logs{background:#1e1e1e;color:#d4d4d4;padding:15px;border-radius:4px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:13px}
-.status{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee}
-</style></head><body>
-<h1>🎬 IMDB to Plex Sync</h1>
-<div class="card"><h2>Configuration</h2>
-<input id="imdbUrl" placeholder="IMDB List URL">
-<input id="plexToken" type="password" placeholder="Plex Token">
-<input id="tmdbKey" type="password" placeholder="TMDB API Key">
-<button onclick="saveConfig()">Save Config</button>
-<button onclick="testSync()">Test Sync Now</button>
-</div>
-<div class="card"><h2>Status</h2>
-<div class="status"><span>Last Sync:</span><span id="lastSync">Never</span></div>
-<div class="status"><span>Processed:</span><span id="processed">0</span></div>
-<div class="status"><span>Added:</span><span id="added">0</span></div>
-<div class="status"><span>Skipped:</span><span id="skipped">0</span></div>
-</div>
-<div class="card"><h2>Logs</h2><div class="logs" id="logs">Waiting...</div></div>
-<script>
-window.onload=()=>{loadConfig();loadStatus();loadLogs();setInterval(loadLogs,5000)};
-async function loadConfig(){
-const r=await fetch('/api/config');const c=await r.json();
-document.getElementById('imdbUrl').value=c.imdbListUrl||'';
-document.getElementById('plexToken').value=c.plexToken||'';
-document.getElementById('tmdbKey').value=c.tmdbApiKey||'';
-}
-async function saveConfig(){
-const c={imdbListUrl:document.getElementById('imdbUrl').value,
-plexToken:document.getElementById('plexToken').value,
-tmdbApiKey:document.getElementById('tmdbKey').value,streamingServices:[]};
-await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
-alert('✅ Saved!');
-}
-async function testSync(){
-await fetch('/api/sync',{method:'POST'});
-alert('🚀 Sync started!');setTimeout(()=>{loadStatus();loadLogs()},2000);
-}
-async function loadStatus(){
-const r=await fetch('/api/status');const s=await r.json();
-document.getElementById('lastSync').textContent=s.lastSync?new Date(s.lastSync).toLocaleString():'Never';
-document.getElementById('processed').textContent=s.processed||0;
-document.getElementById('added').textContent=s.added||0;
-document.getElementById('skipped').textContent=s.skipped||0;
-}
-async function loadLogs(){
-const r=await fetch('/api/logs');const logs=await r.json();
-document.getElementById('logs').innerHTML=logs.slice(-30).map(l=>`<div>[${l.timestamp}] ${l.message}</div>`).join('');
-}
-</script></body></html>'''
-    return render_template_string(html)
+    return render_template('index.html')
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
