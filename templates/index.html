@@ -400,6 +400,10 @@
                         <div class="status-label">Skipped</div>
                         <div class="status-value" id="skipped" style="color: #ffc107;">0</div>
                     </div>
+                    <div class="status-item">
+                        <div class="status-label">Removed</div>
+                        <div class="status-value" id="removed" style="color: #dc3545;">0</div>
+                    </div>
                 </div>
             </div>
             
@@ -498,14 +502,14 @@
                     <div class="service-item">
                         <input type="checkbox" id="service-hbo" value="384">
                         <label for="service-hbo">HBO Max</label>
-                        <select id="region-hbo" class="region-select">
-                            <option value="US">US</option>
-                            <option value="DE" selected>DE</option>
-                            <option value="GB">GB</option>
-                            <option value="ES">ES</option>
-                            <option value="BR">BR</option>
-                            <option value="MX">MX</option>
-                            <option value="HU">HU</option>
+                        <select id="region-hbo" class="region-select" onchange="updateHBOValue(this)">
+                            <option value="US" data-provider="384">US</option>
+                            <option value="DE" data-provider="384" selected>DE</option>
+                            <option value="GB" data-provider="384">GB</option>
+                            <option value="ES" data-provider="384">ES</option>
+                            <option value="BR" data-provider="384">BR</option>
+                            <option value="MX" data-provider="384">MX</option>
+                            <option value="HU" data-provider="1899">HU</option>
                         </select>
                     </div>
                     
@@ -616,7 +620,13 @@
                 // Load streaming services
                 const services = config.streamingServices || [];
                 services.forEach(service => {
-                    const checkbox = document.querySelector(`input[value="${service.id}"]`);
+                    // For HBO Max, check both standard (384) and Hungary (1899) provider IDs
+                    let checkbox = document.querySelector(`input[value="${service.id}"]`);
+                    if (!checkbox && service.id === 1899) {
+                        // Hungary HBO Max - check the HBO checkbox
+                        checkbox = document.getElementById('service-hbo');
+                    }
+                    
                     if (checkbox) {
                         checkbox.checked = true;
                         const serviceName = checkbox.id.replace('service-', '');
@@ -638,7 +648,7 @@
                 {id: '8', name: 'netflix'},
                 {id: '119', name: 'prime'},
                 {id: '337', name: 'disney'},
-                {id: '384', name: 'hbo'},
+                {id: '384', name: 'hbo', regionSpecific: true}, // HBO has different IDs per region
                 {id: '350', name: 'apple'},
                 {id: '531', name: 'paramount'},
                 {id: '15', name: 'hulu'},
@@ -649,9 +659,21 @@
                 const checkbox = document.getElementById(`service-${service.name}`);
                 if (checkbox && checkbox.checked) {
                     const regionSelect = document.getElementById(`region-${service.name}`);
+                    const region = regionSelect ? regionSelect.value : 'US';
+                    
+                    // For HBO Max, use region-specific provider ID
+                    let providerId = parseInt(service.id);
+                    if (service.regionSpecific && regionSelect) {
+                        const selectedOption = regionSelect.options[regionSelect.selectedIndex];
+                        const regionProviderId = selectedOption.getAttribute('data-provider');
+                        if (regionProviderId) {
+                            providerId = parseInt(regionProviderId);
+                        }
+                    }
+                    
                     streamingServices.push({
-                        id: parseInt(service.id),
-                        region: regionSelect ? regionSelect.value : 'US'
+                        id: providerId,
+                        region: region
                     });
                 }
             });
@@ -761,6 +783,7 @@
                 document.getElementById('processed').textContent = status.processed || 0;
                 document.getElementById('added').textContent = status.added || 0;
                 document.getElementById('skipped').textContent = status.skipped || 0;
+                document.getElementById('removed').textContent = status.removed || 0;
                 
                 // Update banner style
                 const banner = document.getElementById('statusBanner');
