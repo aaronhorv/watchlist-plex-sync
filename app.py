@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template_string, request, jsonify
 import requests
 from bs4 import BeautifulSoup
 import json
@@ -622,7 +622,65 @@ def schedule_sync():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    html = '''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IMDB to Plex Sync</title><style>
+body{font-family:sans-serif;max-width:1200px;margin:20px auto;padding:20px;background:#f5f5f5}
+.card{background:white;padding:20px;margin:20px 0;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+h1{color:#333}h2{color:#555;margin-top:0}
+input{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:4px}
+button{background:#007bff;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;margin:5px}
+button:hover{background:#0056b3}
+.logs{background:#1e1e1e;color:#d4d4d4;padding:15px;border-radius:4px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:13px}
+.status{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eee}
+</style></head><body>
+<h1>🎬 IMDB to Plex Sync</h1>
+<div class="card"><h2>Configuration</h2>
+<input id="imdbUrl" placeholder="IMDB List URL">
+<input id="plexToken" type="password" placeholder="Plex Token">
+<input id="tmdbKey" type="password" placeholder="TMDB API Key">
+<button onclick="saveConfig()">Save Config</button>
+<button onclick="testSync()">Test Sync Now</button>
+</div>
+<div class="card"><h2>Status</h2>
+<div class="status"><span>Last Sync:</span><span id="lastSync">Never</span></div>
+<div class="status"><span>Processed:</span><span id="processed">0</span></div>
+<div class="status"><span>Added:</span><span id="added">0</span></div>
+<div class="status"><span>Skipped:</span><span id="skipped">0</span></div>
+</div>
+<div class="card"><h2>Logs</h2><div class="logs" id="logs">Waiting...</div></div>
+<script>
+window.onload=()=>{loadConfig();loadStatus();loadLogs();setInterval(loadLogs,5000)};
+async function loadConfig(){
+const r=await fetch('/api/config');const c=await r.json();
+document.getElementById('imdbUrl').value=c.imdbListUrl||'';
+document.getElementById('plexToken').value=c.plexToken||'';
+document.getElementById('tmdbKey').value=c.tmdbApiKey||'';
+}
+async function saveConfig(){
+const c={imdbListUrl:document.getElementById('imdbUrl').value,
+plexToken:document.getElementById('plexToken').value,
+tmdbApiKey:document.getElementById('tmdbKey').value,streamingServices:[]};
+await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+alert('✅ Saved!');
+}
+async function testSync(){
+await fetch('/api/sync',{method:'POST'});
+alert('🚀 Sync started!');setTimeout(()=>{loadStatus();loadLogs()},2000);
+}
+async function loadStatus(){
+const r=await fetch('/api/status');const s=await r.json();
+document.getElementById('lastSync').textContent=s.lastSync?new Date(s.lastSync).toLocaleString():'Never';
+document.getElementById('processed').textContent=s.processed||0;
+document.getElementById('added').textContent=s.added||0;
+document.getElementById('skipped').textContent=s.skipped||0;
+}
+async function loadLogs(){
+const r=await fetch('/api/logs');const logs=await r.json();
+document.getElementById('logs').innerHTML=logs.slice(-30).map(l=>`<div>[${l.timestamp}] ${l.message}</div>`).join('');
+}
+</script></body></html>'''
+    return render_template_string(html)
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
