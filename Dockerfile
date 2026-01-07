@@ -12,10 +12,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
+# Copy application file
 COPY app.py .
-COPY templates templates/
-COPY static static/
 
 # Create config directory
 RUN mkdir -p /config
