@@ -770,45 +770,24 @@ def sync_watchlist():
     items = get_imdb_watchlist(config['imdbListUrl'])
     
     if not items:
-        add_log("No items found in watchlist", 'warning')
+        add_log("No items found in IMDB watchlist", 'warning')
         return
     
     add_log(f"Found {len(items)} items in IMDB watchlist", 'info')
     
-    # Step 2: Get current Plex watchlist for cleanup
-    add_log("Fetching Plex watchlist for cleanup...", 'info')
+    # Step 2: Get current Plex watchlist (for removal checks)
+    add_log("Fetching Plex watchlist...", 'info')
     plex_items = get_plex_watchlist(config['plexToken'])
     add_log(f"Found {len(plex_items)} items in Plex watchlist", 'info')
     
-    # Step 3: Check Plex watchlist items for streaming availability and remove if found
-    removed = 0
-    for plex_item in plex_items:
-        # Get TMDB data for the Plex item
-        tmdb_id, media_type, title, year = get_tmdb_data(plex_item['imdb_id'], config['tmdbApiKey'])
-        
-        if not tmdb_id:
-            continue
-        
-        # Check if it's now available on streaming
-        is_available, providers = check_streaming_availability(
-            tmdb_id,
-            media_type,
-            config['tmdbApiKey'],
-            config['streamingServices']
-        )
-        
-        if is_available:
-            add_log(f"🗑️  '{plex_item['title']}' now on {', '.join(providers)} - removing from Plex", 'warning')
-            if remove_from_plex_watchlist(plex_item['imdb_id'], plex_item['title'], plex_item['year'], config['plexToken']):
-                removed += 1
+    # Create a dict for quick lookup of Plex items by IMDB ID
+    plex_dict = {item['imdb_id']: item for item in plex_items}
     
-    if removed > 0:
-        add_log(f"Removed {removed} items from Plex watchlist (now on streaming)", 'info')
-    
-    # Step 4: Process IMDB watchlist items
+    # Step 3: Process each IMDB item
     processed = 0
     added = 0
     skipped = 0
+    removed = 0
     results = []
     
     for item in items:
@@ -824,6 +803,7 @@ def sync_watchlist():
             'error': None
         }
         
+        # Get TMDB data
         tmdb_id, media_type, title, year = get_tmdb_data(item['imdb_id'], config['tmdbApiKey'])
         
         if not tmdb_id:
@@ -837,6 +817,7 @@ def sync_watchlist():
         
         add_log(f"[{processed}/{len(items)}] {title} ({year})", 'info')
         
+        # Check if available on streaming
         is_available, providers = check_streaming_availability(
             tmdb_id,
             media_type,
@@ -845,19 +826,43 @@ def sync_watchlist():
         )
         
         if is_available:
-            skipped += 1
-            result['status'] = 'skipped'
+            # ON STREAMING
             result['streaming_services'] = providers
-            add_log(f"Skipped - on {', '.join(providers)}", 'warning')
-            results.append(result)
-            continue
-        
-        if add_to_plex_watchlist(item['imdb_id'], title, year, config['plexToken']):
-            added += 1
-            result['status'] = 'added'
+            add_log(f"  Available on {', '.join(providers)}", 'warning')
+            
+            # Check if it's in Plex watchlist
+            if item['imdb_id'] in plex_dict:
+                # Remove from Plex
+                add_log(f"  🗑️  Removing from Plex watchlist", 'warning')
+                if remove_from_plex_watchlist(item['imdb_id'], title, year, config['plexToken']):
+                    removed += 1
+                    result['status'] = 'removed'
+                else:
+                    result['status'] = 'failed'
+                    result['error'] = 'Failed to remove from Plex'
+            else:
+                # Not in Plex, just skip
+                skipped += 1
+                result['status'] = 'skipped'
+                add_log(f"  ⏭️  Skipped (not in Plex)", 'info')
         else:
-            result['status'] = 'failed'
-            result['error'] = 'Not in Plex or no IMDB match'
+            # NOT ON STREAMING
+            add_log(f"  Not on streaming services", 'info')
+            
+            # Add to Plex if not already there
+            if item['imdb_id'] in plex_dict:
+                # Already in Plex, no action needed
+                add_log(f"  ✓ Already in Plex watchlist", 'info')
+                result['status'] = 'already_in_plex'
+            else:
+                # Add to Plex
+                add_log(f"  ➕ Adding to Plex watchlist", 'success')
+                if add_to_plex_watchlist(item['imdb_id'], title, year, config['plexToken']):
+                    added += 1
+                    result['status'] = 'added'
+                else:
+                    result['status'] = 'failed'
+                    result['error'] = 'Not in Plex or no IMDB match'
         
         results.append(result)
         time.sleep(1.0)
