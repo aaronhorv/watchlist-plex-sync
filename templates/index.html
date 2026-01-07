@@ -3,477 +3,835 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMDB to Plex Watchlist Sync</title>
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>IMDB to Plex Sync</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        
+        .tab:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .tab.active {
+            background: white;
+            color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 32px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            margin-left: 10px;
+        }
+        
+        .status-banner {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status-banner.syncing {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+        }
+        
+        .status-banner.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+        
+        .status-item {
+            text-align: center;
+        }
+        
+        .status-label {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .status-value {
+            color: #333;
+            font-size: 24px;
+            font-weight: 700;
+        }
+        
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 20px;
+            background: #fff3cd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .sync-status.active {
+            display: flex;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .sync-status-text {
+            flex: 1;
+        }
+        
+        .sync-status-text h3 {
+            margin-bottom: 5px;
+            color: #856404;
+        }
+        
+        .sync-status-text p {
+            color: #856404;
+            margin: 0;
+        }
+        
+        .logs {
+            max-height: 500px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px 0;
+        }
+        
+        .log-info {
+            color: #4ec9b0;
+        }
+        
+        .log-success {
+            color: #6bc950;
+        }
+        
+        .log-warning {
+            color: #f9ae3f;
+        }
+        
+        .log-error {
+            color: #f44747;
+        }
+        
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .results-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .results-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .results-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .status-badge.added {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-badge.skipped {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-badge.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .service-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        
+        .service-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            cursor: pointer;
+        }
+        
+        .service-item label {
+            flex: 1;
+            font-weight: 500;
+            color: #333;
+            cursor: pointer;
+        }
+        
+        .region-select {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        .region-select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+    </style>
 </head>
 <body>
-    <div id="root"></div>
-
-    <script type="text/babel">
-        const { useState, useEffect } = React;
-
-        const ImdbPlexSync = () => {
-            const [activeTab, setActiveTab] = useState('dashboard');
-            const [config, setConfig] = useState({
-                imdbListUrl: '',
-                plexToken: '',
-                tmdbApiKey: '',
-                streamingServices: []  // Now [{"id": 8, "region": "DE"}, ...]
-            });
-            const [syncStatus, setSyncStatus] = useState({
-                lastSync: null,
-                status: 'idle',
-                processed: 0,
-                added: 0,
-                skipped: 0
-            });
-            const [logs, setLogs] = useState([]);
-            const [results, setResults] = useState([]);
-            const [loading, setLoading] = useState(false);
-
-            const streamingProviders = [
-                { id: 8, name: 'Netflix', defaultRegion: 'DE' },
-                { id: 350, name: 'Apple TV+', defaultRegion: 'DE' },
-                { id: 384, name: 'HBO Max', defaultRegion: 'HU' },
-                { id: 1899, name: 'Max', defaultRegion: 'US' },
-                { id: 9, name: 'Amazon Prime Video', defaultRegion: 'US' },
-                { id: 337, name: 'Disney+', defaultRegion: 'US' },
-                { id: 531, name: 'Paramount+', defaultRegion: 'US' },
-                { id: 389, name: 'Peacock', defaultRegion: 'US' }
-            ];
-
-            const regions = [
-                'US', 'GB', 'DE', 'FR', 'ES', 'IT', 'NL', 'BE', 'CA', 'AU', 'JP', 'BR', 'MX', 'IN', 'HU'
-            ];
-
-            useEffect(() => {
-                loadConfig();
-                loadLogs();
-                loadStatus();
-                loadResults();
-            }, []);
-
-            const loadConfig = async () => {
-                try {
-                    const response = await fetch('/api/config');
-                    const data = await response.json();
-                    setConfig(data);
-                } catch (error) {
-                    console.error('Error loading config:', error);
-                }
-            };
-
-            const loadLogs = async () => {
-                try {
-                    const response = await fetch('/api/logs');
-                    const data = await response.json();
-                    setLogs(data);
-                } catch (error) {
-                    console.error('Error loading logs:', error);
-                }
-            };
-
-            const loadStatus = async () => {
-                try {
-                    const response = await fetch('/api/status');
-                    const data = await response.json();
-                    setSyncStatus(data);
-                } catch (error) {
-                    console.error('Error loading status:', error);
-                }
-            };
-
-            const loadResults = async () => {
-                try {
-                    const response = await fetch('/api/results');
-                    const data = await response.json();
-                    setResults(data);
-                } catch (error) {
-                    console.error('Error loading results:', error);
-                }
-            };
-
-            const handleServiceToggle = (serviceId, defaultRegion) => {
-                setConfig(prev => {
-                    const exists = prev.streamingServices.find(s => s.id === serviceId);
-                    
-                    if (exists) {
-                        // Remove service
-                        return {
-                            ...prev,
-                            streamingServices: prev.streamingServices.filter(s => s.id !== serviceId)
-                        };
-                    } else {
-                        // Add service with default region
-                        return {
-                            ...prev,
-                            streamingServices: [...prev.streamingServices, { id: serviceId, region: defaultRegion }]
-                        };
-                    }
-                });
-            };
-
-            const handleRegionChange = (serviceId, newRegion) => {
-                setConfig(prev => ({
-                    ...prev,
-                    streamingServices: prev.streamingServices.map(s =>
-                        s.id === serviceId ? { ...s, region: newRegion } : s
-                    )
-                }));
-            };
-
-            const isServiceEnabled = (serviceId) => {
-                return config.streamingServices.some(s => s.id === serviceId);
-            };
-
-            const getServiceRegion = (serviceId) => {
-                const service = config.streamingServices.find(s => s.id === serviceId);
-                return service?.region || 'US';
-            };
-
-            const handleSyncNow = async () => {
-                setLoading(true);
-                setSyncStatus(prev => ({ ...prev, status: 'running' }));
-                
-                try {
-                    await fetch('/api/sync', { method: 'POST' });
-                    
-                    setTimeout(() => {
-                        loadLogs();
-                        loadStatus();
-                        loadResults();
-                        setLoading(false);
-                    }, 2000);
-                } catch (error) {
-                    console.error('Error triggering sync:', error);
-                    setLoading(false);
-                }
-            };
-
-            const saveConfig = async () => {
-                try {
-                    await fetch('/api/config', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(config)
-                    });
-                    alert('Configuration saved!');
-                    loadLogs();
-                } catch (error) {
-                    console.error('Error saving config:', error);
-                    alert('Error saving configuration');
-                }
-            };
-
-            const getStatusBadge = (status) => {
-                const badges = {
-                    'added': 'bg-green-500/20 text-green-400 border-green-500',
-                    'skipped': 'bg-yellow-500/20 text-yellow-400 border-yellow-500',
-                    'failed': 'bg-red-500/20 text-red-400 border-red-500',
-                    'processing': 'bg-blue-500/20 text-blue-400 border-blue-500'
-                };
-                return badges[status] || 'bg-gray-500/20 text-gray-400 border-gray-500';
-            };
-
-            return (
-                <div className="min-h-screen bg-gray-900 text-gray-100">
-                    <div className="container mx-auto p-6 max-w-7xl">
-                        <div className="mb-8">
-                            <h1 className="text-3xl font-bold mb-2">IMDB to Plex Watchlist Sync</h1>
-                            <p className="text-gray-400">Automatically sync IMDB watchlist to Plex, filtering by streaming availability</p>
-                        </div>
-
-                        <div className="flex gap-2 mb-6 border-b border-gray-700">
-                            <button
-                                onClick={() => setActiveTab('dashboard')}
-                                className={`px-4 py-2 font-medium transition-colors ${
-                                    activeTab === 'dashboard'
-                                        ? 'text-blue-400 border-b-2 border-blue-400'
-                                        : 'text-gray-400 hover:text-gray-200'
-                                }`}
-                            >
-                                Dashboard
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('results')}
-                                className={`px-4 py-2 font-medium transition-colors ${
-                                    activeTab === 'results'
-                                        ? 'text-blue-400 border-b-2 border-blue-400'
-                                        : 'text-gray-400 hover:text-gray-200'
-                                }`}
-                            >
-                                Results
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('config')}
-                                className={`px-4 py-2 font-medium transition-colors ${
-                                    activeTab === 'config'
-                                        ? 'text-blue-400 border-b-2 border-blue-400'
-                                        : 'text-gray-400 hover:text-gray-200'
-                                }`}
-                            >
-                                Configuration
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('logs')}
-                                className={`px-4 py-2 font-medium transition-colors ${
-                                    activeTab === 'logs'
-                                        ? 'text-blue-400 border-b-2 border-blue-400'
-                                        : 'text-gray-400 hover:text-gray-200'
-                                }`}
-                            >
-                                Logs
-                            </button>
-                        </div>
-
-                        {activeTab === 'dashboard' && (
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="bg-gray-800 p-6 rounded-lg">
-                                        <div className="text-gray-400 text-sm mb-1">Last Sync</div>
-                                        <div className="text-2xl font-bold">
-                                            {syncStatus.lastSync 
-                                                ? new Date(syncStatus.lastSync).toLocaleString()
-                                                : 'Never'}
-                                        </div>
-                                    </div>
-                                    <div className="bg-gray-800 p-6 rounded-lg">
-                                        <div className="text-gray-400 text-sm mb-1">Items Processed</div>
-                                        <div className="text-2xl font-bold">{syncStatus.processed}</div>
-                                    </div>
-                                    <div className="bg-gray-800 p-6 rounded-lg">
-                                        <div className="text-gray-400 text-sm mb-1">Added to Plex</div>
-                                        <div className="text-2xl font-bold text-green-400">{syncStatus.added}</div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-gray-800 p-6 rounded-lg">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h2 className="text-xl font-semibold">Sync Status</h2>
-                                        <button
-                                            onClick={handleSyncNow}
-                                            disabled={loading}
-                                            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-lg font-medium transition-colors"
-                                        >
-                                            {loading ? 'Syncing...' : 'Sync Now'}
-                                        </button>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-3 h-3 rounded-full ${
-                                                syncStatus.status === 'running' ? 'bg-yellow-400 animate-pulse' :
-                                                syncStatus.status === 'completed' ? 'bg-green-400' : 'bg-gray-600'
-                                            }`} />
-                                            <span className="capitalize">{syncStatus.status}</span>
-                                        </div>
-                                        {syncStatus.skipped > 0 && (
-                                            <div className="text-sm text-gray-400">
-                                                {syncStatus.skipped} items skipped (available on streaming services)
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'results' && (
-                            <div className="bg-gray-800 rounded-lg overflow-hidden">
-                                <div className="p-6 border-b border-gray-700">
-                                    <h2 className="text-xl font-semibold">Sync Results</h2>
-                                </div>
-                                {results.length === 0 ? (
-                                    <div className="p-8 text-center text-gray-400">
-                                        No sync results yet. Click "Sync Now" to start.
-                                    </div>
-                                ) : (
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead className="bg-gray-700">
-                                                <tr>
-                                                    <th className="px-4 py-3 text-left text-sm font-medium">Title</th>
-                                                    <th className="px-4 py-3 text-left text-sm font-medium">Year</th>
-                                                    <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
-                                                    <th className="px-4 py-3 text-left text-sm font-medium">Streaming</th>
-                                                    <th className="px-4 py-3 text-left text-sm font-medium">IMDB</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-700">
-                                                {results.map((result, idx) => (
-                                                    <tr key={idx} className="hover:bg-gray-700/50">
-                                                        <td className="px-4 py-3">
-                                                            {result.title || result.original_title}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-gray-400">
-                                                            {result.year || '-'}
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            <span className={`px-2 py-1 rounded text-xs border ${getStatusBadge(result.status)}`}>
-                                                                {result.status}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-sm">
-                                                            {result.streaming_services.length > 0 
-                                                                ? result.streaming_services.join(', ')
-                                                                : result.error || '-'}
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            <a 
-                                                                href={`https://www.imdb.com/title/${result.imdb_id}`}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-blue-400 hover:text-blue-300 text-sm"
-                                                            >
-                                                                {result.imdb_id}
-                                                            </a>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {activeTab === 'config' && (
-                            <div className="space-y-6">
-                                <div className="bg-gray-800 p-6 rounded-lg">
-                                    <h2 className="text-xl font-semibold mb-4">API Configuration</h2>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">IMDB Watchlist URL</label>
-                                            <input
-                                                type="text"
-                                                value={config.imdbListUrl}
-                                                onChange={(e) => setConfig({...config, imdbListUrl: e.target.value})}
-                                                placeholder="https://www.imdb.com/user/urXXXXXXXX/watchlist/"
-                                                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-                                            />
-                                            <p className="text-xs text-gray-400 mt-1">Get this from your IMDB watchlist page URL</p>
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Plex Token</label>
-                                            <input
-                                                type="password"
-                                                value={config.plexToken}
-                                                onChange={(e) => setConfig({...config, plexToken: e.target.value})}
-                                                placeholder="Your Plex authentication token"
-                                                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-                                            />
-                                            <p className="text-xs text-gray-400 mt-1">Find this in Plex Settings → Account → Get Token</p>
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">TMDB API Key</label>
-                                            <input
-                                                type="password"
-                                                value={config.tmdbApiKey}
-                                                onChange={(e) => setConfig({...config, tmdbApiKey: e.target.value})}
-                                                placeholder="Your TMDB API key"
-                                                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-                                            />
-                                            <p className="text-xs text-gray-400 mt-1">Get a free API key from themoviedb.org</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-gray-800 p-6 rounded-lg">
-                                    <h2 className="text-xl font-semibold mb-4">Streaming Services</h2>
-                                    <p className="text-sm text-gray-400 mb-4">
-                                        Select streaming services and their regions. Content available on these will be skipped.
-                                    </p>
-                                    <div className="space-y-3">
-                                        {streamingProviders.map(provider => {
-                                            const enabled = isServiceEnabled(provider.id);
-                                            const region = getServiceRegion(provider.id);
-                                            
-                                            return (
-                                                <div key={provider.id} className={`p-4 rounded-lg border-2 transition-all ${
-                                                    enabled
-                                                        ? 'border-blue-500 bg-blue-500/10'
-                                                        : 'border-gray-600 bg-gray-700/50'
-                                                }`}>
-                                                    <div className="flex items-center justify-between">
-                                                        <button
-                                                            onClick={() => handleServiceToggle(provider.id, provider.defaultRegion)}
-                                                            className="flex items-center gap-3 flex-1"
-                                                        >
-                                                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                                                enabled ? 'bg-blue-500 border-blue-500' : 'border-gray-500'
-                                                            }`}>
-                                                                {enabled && (
-                                                                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                                    </svg>
-                                                                )}
-                                                            </div>
-                                                            <span className="font-medium">{provider.name}</span>
-                                                        </button>
-                                                        
-                                                        {enabled && (
-                                                            <select
-                                                                value={region}
-                                                                onChange={(e) => handleRegionChange(provider.id, e.target.value)}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                className="bg-gray-700 border border-gray-600 rounded px-3 py-1 text-sm focus:outline-none focus:border-blue-500"
-                                                            >
-                                                                {regions.map(r => (
-                                                                    <option key={r} value={r}>{r}</option>
-                                                                ))}
-                                                            </select>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={saveConfig}
-                                    className="w-full bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg font-medium transition-colors"
-                                >
-                                    Save Configuration
-                                </button>
-                            </div>
-                        )}
-
-                        {activeTab === 'logs' && (
-                            <div className="bg-gray-800 p-6 rounded-lg">
-                                <h2 className="text-xl font-semibold mb-4">Activity Logs</h2>
-                                <div className="space-y-2 max-h-96 overflow-y-auto">
-                                    {logs.length === 0 ? (
-                                        <div className="text-gray-400 text-center py-8">No logs yet</div>
-                                    ) : (
-                                        logs.map((log, idx) => (
-                                            <div key={idx} className="flex gap-3 text-sm py-2 border-b border-gray-700">
-                                                <span className="text-gray-500 font-mono text-xs">
-                                                    {new Date(log.timestamp).toLocaleTimeString()}
-                                                </span>
-                                                <span className={`${
-                                                    log.type === 'success' ? 'text-green-400' :
-                                                    log.type === 'warning' ? 'text-yellow-400' :
-                                                    log.type === 'error' ? 'text-red-400' :
-                                                    'text-gray-300'
-                                                }`}>
-                                                    {log.message}
-                                                </span>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
+    <div class="container">
+        <div class="header">
+            <h1>🎬 IMDB to Plex Sync</h1>
+            <p>Automatically sync your IMDB watchlist to Plex</p>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('sync')">🔄 Sync & Results</button>
+            <button class="tab" onclick="switchTab('config')">⚙️ Configuration</button>
+            <button class="tab" onclick="switchTab('logs')">📝 Logs</button>
+        </div>
+        
+        <div id="sync-tab" class="tab-content active">
+            <div class="sync-status" id="syncStatus">
+                <div class="spinner"></div>
+                <div class="sync-status-text">
+                    <h3>⏳ Syncing in progress...</h3>
+                    <p id="syncProgress">Please wait while we sync your watchlist</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>🚀 Start Sync</h2>
+                <p style="margin-bottom: 20px; color: #666;">Click the button below to start syncing your IMDB watchlist to Plex. This will fetch all items from your watchlist, check streaming availability, and add them to your Plex watchlist.</p>
+                <button class="btn" id="syncButton" onclick="startSync()">🔄 Start Sync Now</button>
+            </div>
+            
+            <div class="card">
+                <h2>📊 Status</h2>
+                <div class="status-banner" id="statusBanner">
+                    <div class="status-item">
+                        <div class="status-label">Last Sync</div>
+                        <div class="status-value" id="lastSync" style="font-size: 16px;">Never</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Processed</div>
+                        <div class="status-value" id="processed">0</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Added to Plex</div>
+                        <div class="status-value" id="added" style="color: #28a745;">0</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Skipped</div>
+                        <div class="status-value" id="skipped" style="color: #ffc107;">0</div>
                     </div>
                 </div>
-            );
+            </div>
+            
+            <div class="card">
+                <h2>📋 Results</h2>
+                <div id="resultsContainer">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>No results yet. Run a sync to see results here.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="config-tab" class="tab-content">
+            <div class="card">
+                <h2>⚙️ IMDB & API Configuration</h2>
+                <div class="form-group">
+                    <label>IMDB List URL</label>
+                    <input type="text" id="imdbUrl" placeholder="https://www.imdb.com/user/urXXXXXXXX/watchlist or https://www.imdb.com/list/lsXXXXXXXX/">
+                </div>
+                <div class="form-group">
+                    <label>Plex Token</label>
+                    <input type="password" id="plexToken" placeholder="Your Plex authentication token">
+                </div>
+                <div class="form-group">
+                    <label>TMDB API Key</label>
+                    <input type="password" id="tmdbKey" placeholder="Your TMDB API key">
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>📺 Streaming Services</h2>
+                <p style="margin-bottom: 20px; color: #666;">Select the streaming services you have access to. Movies available on these services will be skipped during sync.</p>
+                
+                <div id="streamingServices">
+                    <div class="service-item">
+                        <input type="checkbox" id="service-netflix" value="8">
+                        <label for="service-netflix">Netflix</label>
+                        <select id="region-netflix" class="region-select">
+                            <option value="US">United States</option>
+                            <option value="DE" selected>Germany</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="CA">Canada</option>
+                            <option value="FR">France</option>
+                            <option value="ES">Spain</option>
+                            <option value="IT">Italy</option>
+                            <option value="BR">Brazil</option>
+                            <option value="MX">Mexico</option>
+                            <option value="AU">Australia</option>
+                            <option value="JP">Japan</option>
+                            <option value="IN">India</option>
+                        </select>
+                    </div>
+                    
+                    <div class="service-item">
+                        <input type="checkbox" id="service-prime" value="119">
+                        <label for="service-prime">Amazon Prime Video</label>
+                        <select id="region-prime" class="region-select">
+                            <option value="US">United States</option>
+                            <option value="DE" selected>Germany</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="CA">Canada</option>
+                            <option value="FR">France</option>
+                            <option value="ES">Spain</option>
+                            <option value="IT">Italy</option>
+                            <option value="BR">Brazil</option>
+                            <option value="MX">Mexico</option>
+                            <option value="AU">Australia</option>
+                            <option value="JP">Japan</option>
+                            <option value="IN">India</option>
+                        </select>
+                    </div>
+                    
+                    <div class="service-item">
+                        <input type="checkbox" id="service-disney" value="337">
+                        <label for="service-disney">Disney+</label>
+                        <select id="region-disney" class="region-select">
+                            <option value="US">United States</option>
+                            <option value="DE" selected>Germany</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="CA">Canada</option>
+                            <option value="FR">France</option>
+                            <option value="ES">Spain</option>
+                            <option value="IT">Italy</option>
+                            <option value="BR">Brazil</option>
+                            <option value="MX">Mexico</option>
+                            <option value="AU">Australia</option>
+                            <option value="JP">Japan</option>
+                        </select>
+                    </div>
+                    
+                    <div class="service-item">
+                        <input type="checkbox" id="service-hbo" value="384">
+                        <label for="service-hbo">HBO Max</label>
+                        <select id="region-hbo" class="region-select">
+                            <option value="US">United States</option>
+                            <option value="DE" selected>Germany</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="ES">Spain</option>
+                            <option value="BR">Brazil</option>
+                            <option value="MX">Mexico</option>
+                        </select>
+                    </div>
+                    
+                    <div class="service-item">
+                        <input type="checkbox" id="service-apple" value="350">
+                        <label for="service-apple">Apple TV+</label>
+                        <select id="region-apple" class="region-select">
+                            <option value="US">United States</option>
+                            <option value="DE" selected>Germany</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="CA">Canada</option>
+                            <option value="FR">France</option>
+                            <option value="ES">Spain</option>
+                            <option value="IT">Italy</option>
+                            <option value="BR">Brazil</option>
+                            <option value="MX">Mexico</option>
+                            <option value="AU">Australia</option>
+                            <option value="JP">Japan</option>
+                        </select>
+                    </div>
+                    
+                    <div class="service-item">
+                        <input type="checkbox" id="service-paramount" value="531">
+                        <label for="service-paramount">Paramount+</label>
+                        <select id="region-paramount" class="region-select">
+                            <option value="US">United States</option>
+                            <option value="DE" selected>Germany</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="CA">Canada</option>
+                            <option value="AU">Australia</option>
+                        </select>
+                    </div>
+                    
+                    <div class="service-item">
+                        <input type="checkbox" id="service-hulu" value="15">
+                        <label for="service-hulu">Hulu</label>
+                        <select id="region-hulu" class="region-select">
+                            <option value="US" selected>United States</option>
+                            <option value="JP">Japan</option>
+                        </select>
+                    </div>
+                    
+                    <div class="service-item">
+                        <input type="checkbox" id="service-peacock" value="386">
+                        <label for="service-peacock">Peacock</label>
+                        <select id="region-peacock" class="region-select">
+                            <option value="US" selected>United States</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button class="btn" onclick="saveConfig()" style="margin-top: 20px;">💾 Save Configuration</button>
+            </div>
+        </div>
+        
+        <div id="logs-tab" class="tab-content">
+            <div class="card">
+                <h2>📝 Application Logs</h2>
+                <div class="logs" id="logs">
+                    <div class="log-entry log-info">Waiting for activity...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let syncInterval = null;
+        let isSyncing = false;
+        
+        window.onload = function() {
+            loadConfig();
+            loadStatus();
+            loadLogs();
+            loadResults();
+            
+            // Refresh logs every 3 seconds
+            setInterval(loadLogs, 3000);
+            
+            // Check sync status every 2 seconds
+            setInterval(checkSyncStatus, 2000);
         };
-
-        ReactDOM.render(<ImdbPlexSync />, document.getElementById('root'));
+        
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                
+                document.getElementById('imdbUrl').value = config.imdbListUrl || '';
+                document.getElementById('plexToken').value = config.plexToken || '';
+                document.getElementById('tmdbKey').value = config.tmdbApiKey || '';
+                
+                // Load streaming services
+                const services = config.streamingServices || [];
+                services.forEach(service => {
+                    const checkbox = document.querySelector(`input[value="${service.id}"]`);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                        const serviceName = checkbox.id.replace('service-', '');
+                        const regionSelect = document.getElementById(`region-${serviceName}`);
+                        if (regionSelect && service.region) {
+                            regionSelect.value = service.region;
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading config:', error);
+            }
+        }
+        
+        async function saveConfig() {
+            // Collect enabled streaming services
+            const streamingServices = [];
+            const services = [
+                {id: '8', name: 'netflix'},
+                {id: '119', name: 'prime'},
+                {id: '337', name: 'disney'},
+                {id: '384', name: 'hbo'},
+                {id: '350', name: 'apple'},
+                {id: '531', name: 'paramount'},
+                {id: '15', name: 'hulu'},
+                {id: '386', name: 'peacock'}
+            ];
+            
+            services.forEach(service => {
+                const checkbox = document.getElementById(`service-${service.name}`);
+                if (checkbox && checkbox.checked) {
+                    const regionSelect = document.getElementById(`region-${service.name}`);
+                    streamingServices.push({
+                        id: parseInt(service.id),
+                        region: regionSelect ? regionSelect.value : 'US'
+                    });
+                }
+            });
+            
+            const config = {
+                imdbListUrl: document.getElementById('imdbUrl').value,
+                plexToken: document.getElementById('plexToken').value,
+                tmdbApiKey: document.getElementById('tmdbKey').value,
+                streamingServices: streamingServices
+            };
+            
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+                
+                if (response.ok) {
+                    alert('✅ Configuration saved successfully!');
+                }
+            } catch (error) {
+                alert('❌ Error saving configuration: ' + error.message);
+            }
+        }
+        
+        async function startSync() {
+            if (isSyncing) {
+                alert('⏳ Sync already in progress!');
+                return;
+            }
+            
+            const button = document.getElementById('syncButton');
+            button.disabled = true;
+            button.textContent = '⏳ Syncing...';
+            
+            isSyncing = true;
+            document.getElementById('syncStatus').classList.add('active');
+            
+            try {
+                const response = await fetch('/api/sync', {method: 'POST'});
+                if (response.ok) {
+                    console.log('Sync started successfully');
+                }
+            } catch (error) {
+                alert('❌ Error starting sync: ' + error.message);
+                isSyncing = false;
+                button.disabled = false;
+                button.textContent = '🔄 Start Sync Now';
+                document.getElementById('syncStatus').classList.remove('active');
+            }
+        }
+        
+        async function checkSyncStatus() {
+            const logs = await fetch('/api/logs').then(r => r.json()).catch(() => []);
+            const recentLogs = logs.slice(-10);
+            
+            // Check if sync is complete
+            const hasCompleteMessage = recentLogs.some(log => 
+                log.message.includes('Complete:') || 
+                log.message.includes('processed')
+            );
+            
+            const hasStartMessage = recentLogs.some(log => 
+                log.message.includes('Starting sync')
+            );
+            
+            if (isSyncing && hasCompleteMessage) {
+                // Keep on sync tab to show results
+                loadStatus();
+                loadResults();
+            } else if (hasStartMessage && !isSyncing) {
+                // Sync was started externally
+                isSyncing = true;
+                document.getElementById('syncStatus').classList.add('active');
+                const button = document.getElementById('syncButton');
+                button.disabled = true;
+                button.textContent = '⏳ Syncing...';
+            }
+        }
+        
+        function switchTabProgrammatic(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(tabName + '-tab').classList.add('active');
+            document.querySelectorAll('.tab').forEach((tab, index) => {
+                if ((tabName === 'sync' && index === 0) ||
+                    (tabName === 'config' && index === 1) ||
+                    (tabName === 'logs' && index === 2)) {
+                    tab.classList.add('active');
+                }
+            });
+        }
+        
+        async function loadStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+                
+                document.getElementById('lastSync').textContent = 
+                    status.lastSync ? new Date(status.lastSync).toLocaleString() : 'Never';
+                document.getElementById('processed').textContent = status.processed || 0;
+                document.getElementById('added').textContent = status.added || 0;
+                document.getElementById('skipped').textContent = status.skipped || 0;
+                
+                // Update banner style
+                const banner = document.getElementById('statusBanner');
+                if (status.processed > 0) {
+                    banner.classList.add('success');
+                }
+            } catch (error) {
+                console.error('Error loading status:', error);
+            }
+        }
+        
+        async function loadLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const logs = await response.json();
+                
+                const logsDiv = document.getElementById('logs');
+                logsDiv.innerHTML = logs.slice(-100).reverse().map(log => {
+                    const className = 'log-' + log.type;
+                    return `<div class="log-entry ${className}">[${log.timestamp}] ${log.message}</div>`;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading logs:', error);
+            }
+        }
+        
+        async function loadResults() {
+            try {
+                const response = await fetch('/api/results');
+                const results = await response.json();
+                
+                const container = document.getElementById('resultsContainer');
+                
+                if (results.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📭</div>
+                            <p>No results yet. Run a sync to see results here.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const tableHTML = `
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Year</th>
+                                <th>IMDB ID</th>
+                                <th>Status</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${results.map(result => `
+                                <tr>
+                                    <td><strong>${result.title || result.original_title}</strong></td>
+                                    <td>${result.year || 'N/A'}</td>
+                                    <td><code>${result.imdb_id}</code></td>
+                                    <td><span class="status-badge ${result.status}">${result.status.toUpperCase()}</span></td>
+                                    <td>
+                                        ${result.streaming_services && result.streaming_services.length > 0 
+                                            ? result.streaming_services.join(', ') 
+                                            : result.error || '-'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                
+                container.innerHTML = tableHTML;
+            } catch (error) {
+                console.error('Error loading results:', error);
+            }
+        }
     </script>
 </body>
 </html>
