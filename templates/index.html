@@ -463,6 +463,7 @@
                 <div class="source-selector">
                     <button class="source-btn active" id="src-imdb" onclick="selectSource('imdb')">🎬 IMDB</button>
                     <button class="source-btn" id="src-tmdb" onclick="selectSource('tmdb')">🎥 TMDB List</button>
+                    <button class="source-btn" id="src-tmdb_watchlist" onclick="selectSource('tmdb_watchlist')">👁️ TMDB Watchlist</button>
                     <button class="source-btn" id="src-trakt" onclick="selectSource('trakt')">📡 Trakt</button>
                 </div>
 
@@ -481,6 +482,20 @@
                         <label>TMDB List ID</label>
                         <input type="text" id="tmdbListId" placeholder="e.g. 8303833">
                         <small style="color:#888;">The numeric ID from your TMDB list URL (themoviedb.org/list/XXXXXXX)</small>
+                    </div>
+                </div>
+
+                <!-- TMDB Watchlist fields -->
+                <div class="source-fields" id="fields-tmdb_watchlist">
+                    <div class="form-group">
+                        <label>TMDB Account ID</label>
+                        <input type="text" id="tmdbAccountId" placeholder="e.g. 12345678">
+                        <small style="color:#888;">Find this at themoviedb.org → Account → Settings (shown in the URL)</small>
+                    </div>
+                    <div class="form-group">
+                        <label>TMDB Session ID</label>
+                        <input type="password" id="tmdbSessionId" placeholder="Your TMDB session_id">
+                        <small style="color:#888;">Generate via the TMDB API authentication flow — see <a href="https://developers.themoviedb.org/3/authentication/how-do-i-generate-a-session-id" target="_blank" style="color:#667eea;">TMDB docs</a></small>
                     </div>
                 </div>
 
@@ -705,6 +720,8 @@
 
                 document.getElementById('imdbUrl').value = config.imdbListUrl || '';
                 document.getElementById('tmdbListId').value = config.tmdbListId || '';
+                document.getElementById('tmdbAccountId').value = config.tmdbAccountId || '';
+                document.getElementById('tmdbSessionId').value = config.tmdbSessionId || '';
                 document.getElementById('traktUrl').value = config.traktListUrl || '';
                 document.getElementById('traktApiKey').value = config.traktApiKey || '';
                 document.getElementById('plexToken').value = config.plexToken || '';
@@ -775,6 +792,8 @@
                 listSource: currentSource,
                 imdbListUrl: document.getElementById('imdbUrl').value,
                 tmdbListId: document.getElementById('tmdbListId').value,
+                tmdbAccountId: document.getElementById('tmdbAccountId').value,
+                tmdbSessionId: document.getElementById('tmdbSessionId').value,
                 traktListUrl: document.getElementById('traktUrl').value,
                 traktApiKey: document.getElementById('traktApiKey').value,
                 plexToken: document.getElementById('plexToken').value,

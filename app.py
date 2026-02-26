@@ -24,6 +24,8 @@ def load_config():
         'listSource': 'imdb',
         'imdbListUrl': '',
         'tmdbListId': '',
+        'tmdbAccountId': '',
+        'tmdbSessionId': '',
         'traktListUrl': '',
         'traktApiKey': '',
         'plexToken': '',
@@ -447,6 +449,58 @@ def get_tmdb_list(list_id, api_key):
 
     except Exception as e:
         add_log(f"Error fetching TMDB list {list_id}: {str(e)}", 'error')
+
+    return items
+
+
+def get_tmdb_watchlist(account_id, session_id, api_key):
+    """Fetch movies and TV shows from a TMDB account watchlist.
+
+    Requires:
+      account_id  – numeric TMDB account ID (visible in TMDB account settings)
+      session_id  – TMDB session ID (create at themoviedb.org/settings/api)
+      api_key     – TMDB API v3 key (already required for streaming checks)
+    """
+    items = []
+    try:
+        for media_type in ('movies', 'tv'):
+            page = 1
+            while True:
+                url = f"https://api.themoviedb.org/3/account/{account_id}/watchlist/{media_type}"
+                params = {
+                    'api_key': api_key,
+                    'session_id': session_id,
+                    'page': page,
+                    'sort_by': 'created_at.asc',
+                }
+                response = requests.get(url, params=params, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+
+                for entry in data.get('results', []):
+                    tmdb_id = entry.get('id')
+                    plex_type = 'tv' if media_type == 'tv' else 'movie'
+                    title = entry.get('title') or entry.get('name', '')
+                    year = (entry.get('release_date') or entry.get('first_air_date') or '')[:4]
+                    items.append({
+                        'title': title,
+                        'tmdb_id': tmdb_id,
+                        'media_type': plex_type,
+                        'year': year,
+                        'imdb_id': None,
+                    })
+                    add_log(f"TMDB watchlist item: {title} ({tmdb_id})", 'info')
+
+                total_pages = data.get('total_pages', 1)
+                if page >= total_pages:
+                    break
+                page += 1
+
+        add_log(f"TMDB watchlist: {len(items)} total items fetched", 'info')
+    except Exception as e:
+        add_log(f"Error fetching TMDB watchlist: {str(e)}", 'error')
+        import traceback
+        add_log(f"Traceback: {traceback.format_exc()}", 'error')
 
     return items
 
@@ -891,6 +945,9 @@ def sync_watchlist():
     if list_source == 'tmdb' and not config.get('tmdbListId'):
         add_log("TMDB List ID is required for TMDB source.", 'error')
         return
+    if list_source == 'tmdb_watchlist' and not (config.get('tmdbAccountId') and config.get('tmdbSessionId')):
+        add_log("TMDB Account ID and Session ID are required for TMDB Watchlist source.", 'error')
+        return
     if list_source == 'trakt' and not (config.get('traktListUrl') and config.get('traktApiKey')):
         add_log("Trakt List URL and Trakt API Key are required for Trakt source.", 'error')
         return
@@ -916,6 +973,14 @@ def sync_watchlist():
             add_log("No items found in TMDB list. Check that the list is public.", 'warning')
             return
         add_log(f"Found {len(items)} items in TMDB list", 'info')
+
+    elif list_source == 'tmdb_watchlist':
+        add_log(f"TMDB Account Watchlist (account: {config['tmdbAccountId']})", 'info')
+        items = get_tmdb_watchlist(config['tmdbAccountId'], config['tmdbSessionId'], config['tmdbApiKey'])
+        if not items:
+            add_log("No items found in TMDB watchlist. Check Account ID and Session ID.", 'warning')
+            return
+        add_log(f"Found {len(items)} items in TMDB watchlist", 'info')
 
     elif list_source == 'trakt':
         add_log(f"Trakt List URL: {config['traktListUrl']}", 'info')
