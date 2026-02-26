@@ -1156,14 +1156,15 @@ def get_status():
     
     added = len([r for r in results if r['status'] == 'added'])
     skipped = len([r for r in results if r['status'] == 'skipped'])
-    
+    removed = len([r for r in results if r['status'] == 'removed'])
+
     return jsonify({
         'lastSync': stats.get('last_sync', datetime.now().isoformat()),
         'status': 'completed',
         'processed': len(results),
         'added': added,
         'skipped': skipped,
-        'removed': stats.get('removed', 0)
+        'removed': removed
     })
 
 @app.route('/health', methods=['GET'])
