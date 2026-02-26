@@ -21,7 +21,11 @@ def load_config():
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
     return {
+        'listSource': 'imdb',
         'imdbListUrl': '',
+        'tmdbListId': '',
+        'traktListUrl': '',
+        'traktApiKey': '',
         'plexToken': '',
         'tmdbApiKey': '',
         'streamingServices': []  # Now stores [{"id": 8, "region": "DE"}, ...]
@@ -417,6 +421,108 @@ def scrape_custom_list(list_url):
         add_log(f"Error scraping custom list: {str(e)}", 'error')
         return []
 
+def get_tmdb_list(list_id, api_key):
+    """Fetch items from a TMDB list by list ID"""
+    items = []
+    try:
+        url = f"https://api.themoviedb.org/3/list/{list_id}"
+        params = {'api_key': api_key}
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        for entry in data.get('items', []):
+            media_type = entry.get('media_type', 'movie')
+            tmdb_id = entry.get('id')
+            title = entry.get('title') or entry.get('name', '')
+            year = (entry.get('release_date') or entry.get('first_air_date') or '')[:4]
+            items.append({
+                'title': title,
+                'tmdb_id': tmdb_id,
+                'media_type': media_type,
+                'year': year,
+                'imdb_id': None,
+            })
+            add_log(f"TMDB list item: {title} ({tmdb_id})", 'info')
+
+    except Exception as e:
+        add_log(f"Error fetching TMDB list {list_id}: {str(e)}", 'error')
+
+    return items
+
+
+def get_trakt_list(list_url, trakt_api_key):
+    """Fetch items from a Trakt list URL using the Trakt API.
+
+    Supported URL formats:
+      https://trakt.tv/users/<username>/watchlist
+      https://trakt.tv/users/<username>/lists/<list-slug>
+    """
+    items = []
+    try:
+        match_watchlist = re.search(r'trakt\.tv/users/([^/]+)/watchlist', list_url)
+        match_custom = re.search(r'trakt\.tv/users/([^/]+)/lists/([^/?]+)', list_url)
+
+        if match_watchlist:
+            username = match_watchlist.group(1)
+            api_url = f"https://api.trakt.tv/users/{username}/watchlist"
+        elif match_custom:
+            username = match_custom.group(1)
+            list_slug = match_custom.group(2)
+            api_url = f"https://api.trakt.tv/users/{username}/lists/{list_slug}/items"
+        else:
+            add_log(f"Unrecognised Trakt URL format: {list_url}", 'error')
+            return items
+
+        headers = {
+            'Content-Type': 'application/json',
+            'trakt-api-version': '2',
+            'trakt-api-key': trakt_api_key,
+        }
+
+        page = 1
+        while True:
+            params = {'page': page, 'limit': 100, 'extended': 'full'}
+            response = requests.get(api_url, headers=headers, params=params, timeout=15)
+            response.raise_for_status()
+            entries = response.json()
+
+            if not entries:
+                break
+
+            for entry in entries:
+                media_type = entry.get('type', 'movie')
+                obj = entry.get(media_type) or entry.get('movie') or entry.get('show')
+                if not obj:
+                    continue
+                ids = obj.get('ids', {})
+                imdb_id = ids.get('imdb')
+                tmdb_id = ids.get('tmdb')
+                title = obj.get('title', '')
+                year = str(obj.get('year', ''))
+                plex_type = 'tv' if media_type == 'show' else 'movie'
+                items.append({
+                    'title': title,
+                    'imdb_id': imdb_id,
+                    'tmdb_id': tmdb_id,
+                    'media_type': plex_type,
+                    'year': year,
+                })
+                add_log(f"Trakt list item: {title} ({imdb_id or tmdb_id})", 'info')
+
+            total_pages = int(response.headers.get('X-Pagination-Page-Count', 1))
+            if page >= total_pages:
+                break
+            page += 1
+
+    except Exception as e:
+        add_log(f"Error fetching Trakt list: {str(e)}", 'error')
+        import traceback
+        add_log(f"Traceback: {traceback.format_exc()}", 'error')
+
+    return items
+
+
 def get_tmdb_data(imdb_id, api_key):
     """Get TMDB data from IMDB ID"""
     try:
@@ -771,36 +877,70 @@ def get_plex_watchlist(plex_token):
 
 def sync_watchlist():
     config = load_config()
-    
-    if not all([config.get('imdbListUrl'), config.get('plexToken'), config.get('tmdbApiKey')]):
-        add_log("Configuration incomplete", 'error')
+
+    list_source = config.get('listSource', 'imdb')
+
+    # Validate required fields
+    if not config.get('plexToken') or not config.get('tmdbApiKey'):
+        add_log("Configuration incomplete. Plex Token and TMDB API Key are required.", 'error')
         return
-    
+
+    if list_source == 'imdb' and not config.get('imdbListUrl'):
+        add_log("IMDB List URL is required for IMDB source.", 'error')
+        return
+    if list_source == 'tmdb' and not config.get('tmdbListId'):
+        add_log("TMDB List ID is required for TMDB source.", 'error')
+        return
+    if list_source == 'trakt' and not (config.get('traktListUrl') and config.get('traktApiKey')):
+        add_log("Trakt List URL and Trakt API Key are required for Trakt source.", 'error')
+        return
+
     add_log("=" * 50, 'info')
     add_log("Starting sync", 'info')
+    add_log(f"List source: {list_source}", 'info')
     add_log("=" * 50, 'info')
-    
-    # Step 1: Get IMDB watchlist
-    items = get_imdb_watchlist(config['imdbListUrl'])
-    
-    if not items:
-        add_log("No items found in IMDB watchlist", 'warning')
+
+    # Step 1: Fetch items from the configured source
+    if list_source == 'imdb':
+        add_log(f"IMDB List URL: {config['imdbListUrl']}", 'info')
+        items = get_imdb_watchlist(config['imdbListUrl'])
+        if not items:
+            add_log("No items found in IMDB watchlist", 'warning')
+            return
+        add_log(f"Found {len(items)} items in IMDB watchlist", 'info')
+
+    elif list_source == 'tmdb':
+        add_log(f"TMDB List ID: {config['tmdbListId']}", 'info')
+        items = get_tmdb_list(config['tmdbListId'], config['tmdbApiKey'])
+        if not items:
+            add_log("No items found in TMDB list. Check that the list is public.", 'warning')
+            return
+        add_log(f"Found {len(items)} items in TMDB list", 'info')
+
+    elif list_source == 'trakt':
+        add_log(f"Trakt List URL: {config['traktListUrl']}", 'info')
+        items = get_trakt_list(config['traktListUrl'], config['traktApiKey'])
+        if not items:
+            add_log("No items found in Trakt list. Check that the list is public and API key is valid.", 'warning')
+            return
+        add_log(f"Found {len(items)} items in Trakt list", 'info')
+
+    else:
+        add_log(f"Unknown list source: {list_source}", 'error')
         return
-    
-    add_log(f"Found {len(items)} items in IMDB watchlist", 'info')
-    
-    # Step 2: Process each IMDB item
+
+    # Step 2: Process each item
     processed = 0
     added = 0
     skipped = 0
     removed = 0
     results = []
-    
+
     for item in items:
         processed += 1
-        
+
         result = {
-            'imdb_id': item['imdb_id'],
+            'imdb_id': item.get('imdb_id'),
             'original_title': item['title'],
             'title': None,
             'year': None,
@@ -808,21 +948,32 @@ def sync_watchlist():
             'streaming_services': [],
             'error': None
         }
-        
-        # Get TMDB data
-        tmdb_id, media_type, title, year = get_tmdb_data(item['imdb_id'], config['tmdbApiKey'])
-        
-        if not tmdb_id:
-            result['status'] = 'failed'
-            result['error'] = 'Not in TMDB'
-            results.append(result)
-            continue
-        
+
+        # Resolve TMDB ID and media type
+        tmdb_id = item.get('tmdb_id')
+        media_type = item.get('media_type')
+        title = item.get('title', '')
+        year = item.get('year', '')
+        imdb_id = item.get('imdb_id')
+
+        if tmdb_id and media_type:
+            # TMDB/Trakt items already have this info
+            if media_type not in ('movie', 'tv'):
+                media_type = 'movie'
+        else:
+            # IMDB source: look up via TMDB find endpoint
+            tmdb_id, media_type, title, year = get_tmdb_data(imdb_id, config['tmdbApiKey'])
+            if not tmdb_id:
+                result['status'] = 'failed'
+                result['error'] = 'Not in TMDB'
+                results.append(result)
+                continue
+
         result['title'] = title
         result['year'] = year
-        
+
         add_log(f"[{processed}/{len(items)}] {title} ({year})", 'info')
-        
+
         # Check if available on streaming
         is_available, providers = check_streaming_availability(
             tmdb_id,
@@ -830,44 +981,57 @@ def sync_watchlist():
             config['tmdbApiKey'],
             config['streamingServices']
         )
-        
+
+        # For Plex we need an IMDB ID; fetch it from TMDB if missing
+        if not imdb_id:
+            try:
+                ext_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/external_ids"
+                ext_resp = requests.get(ext_url, params={'api_key': config['tmdbApiKey']}, timeout=10)
+                ext_resp.raise_for_status()
+                imdb_id = ext_resp.json().get('imdb_id')
+                result['imdb_id'] = imdb_id
+            except Exception as e:
+                add_log(f"Could not fetch external IDs for TMDB {tmdb_id}: {str(e)}", 'warning')
+
+        if not imdb_id:
+            result['status'] = 'failed'
+            result['error'] = 'No IMDB ID available'
+            results.append(result)
+            continue
+
         if is_available:
             # ON STREAMING
             result['streaming_services'] = providers
             add_log(f"  Available on {', '.join(providers)}", 'warning')
-            
-            # Try to remove from Plex (uses same search method as add)
+
             add_log(f"  🗑️  Attempting to remove from Plex watchlist", 'warning')
-            if remove_from_plex_watchlist(item['imdb_id'], title, year, config['plexToken']):
+            if remove_from_plex_watchlist(imdb_id, title, year, config['plexToken']):
                 removed += 1
                 result['status'] = 'removed'
             else:
-                # Not in Plex or couldn't remove
                 skipped += 1
                 result['status'] = 'skipped'
                 add_log(f"  ⏭️  Skipped (not in Plex or couldn't remove)", 'info')
         else:
             # NOT ON STREAMING
             add_log(f"  Not on streaming services", 'info')
-            
-            # Try to add to Plex (if already there, it will handle gracefully)
             add_log(f"  ➕ Adding to Plex watchlist", 'success')
-            if add_to_plex_watchlist(item['imdb_id'], title, year, config['plexToken']):
+            if add_to_plex_watchlist(imdb_id, title, year, config['plexToken']):
                 added += 1
                 result['status'] = 'added'
             else:
                 result['status'] = 'failed'
                 result['error'] = 'Not in Plex or no IMDB match'
-        
+
         results.append(result)
         time.sleep(1.0)
-    
+
     save_sync_results(results)
     save_sync_stats({
         'removed': removed,
         'last_sync': datetime.now().isoformat()
     })
-    
+
     add_log("=" * 50, 'info')
     add_log(f"Complete: {processed} processed, {added} added, {skipped} skipped, {removed} removed", 'success')
     add_log("=" * 50, 'info')

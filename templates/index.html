@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMDB to Plex Sync</title>
+    <title>Watchlist to Plex Sync</title>
     <style>
         * {
             margin: 0;
@@ -351,13 +351,50 @@
             outline: none;
             border-color: #667eea;
         }
+
+        .source-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .source-btn {
+            padding: 10px 22px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            background: white;
+            color: #555;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s, color 0.2s;
+        }
+
+        .source-btn:hover {
+            border-color: #667eea;
+        }
+
+        .source-btn.active {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .source-fields {
+            display: none;
+        }
+
+        .source-fields.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎬 IMDB to Plex Sync</h1>
-            <p>Automatically sync your IMDB watchlist to Plex</p>
+            <h1>🎬 Watchlist to Plex Sync</h1>
+            <p>Automatically sync your IMDB, TMDB, or Trakt watchlist to Plex</p>
         </div>
         
         <div class="tabs">
@@ -420,18 +457,55 @@
         
         <div id="config-tab" class="tab-content">
             <div class="card">
-                <h2>⚙️ IMDB & API Configuration</h2>
-                <div class="form-group">
-                    <label>IMDB List URL</label>
-                    <input type="text" id="imdbUrl" placeholder="https://www.imdb.com/user/urXXXXXXXX/watchlist or https://www.imdb.com/list/lsXXXXXXXX/">
+                <h2>⚙️ List Source & API Configuration</h2>
+
+                <p style="margin-bottom: 12px; color: #555; font-weight: 500;">Select your watchlist source:</p>
+                <div class="source-selector">
+                    <button class="source-btn active" id="src-imdb" onclick="selectSource('imdb')">🎬 IMDB</button>
+                    <button class="source-btn" id="src-tmdb" onclick="selectSource('tmdb')">🎥 TMDB List</button>
+                    <button class="source-btn" id="src-trakt" onclick="selectSource('trakt')">📡 Trakt</button>
                 </div>
-                <div class="form-group">
+
+                <!-- IMDB fields -->
+                <div class="source-fields active" id="fields-imdb">
+                    <div class="form-group">
+                        <label>IMDB Watchlist URL</label>
+                        <input type="text" id="imdbUrl" placeholder="https://www.imdb.com/user/urXXXXXXXX/watchlist or https://www.imdb.com/list/lsXXXXXXXX/">
+                        <small style="color:#888;">Your IMDB watchlist or list URL (must be public)</small>
+                    </div>
+                </div>
+
+                <!-- TMDB List fields -->
+                <div class="source-fields" id="fields-tmdb">
+                    <div class="form-group">
+                        <label>TMDB List ID</label>
+                        <input type="text" id="tmdbListId" placeholder="e.g. 8303833">
+                        <small style="color:#888;">The numeric ID from your TMDB list URL (themoviedb.org/list/XXXXXXX)</small>
+                    </div>
+                </div>
+
+                <!-- Trakt fields -->
+                <div class="source-fields" id="fields-trakt">
+                    <div class="form-group">
+                        <label>Trakt List URL</label>
+                        <input type="text" id="traktUrl" placeholder="https://trakt.tv/users/username/watchlist">
+                        <small style="color:#888;">Your Trakt watchlist or custom list URL (must be public)</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Trakt API Key (Client ID)</label>
+                        <input type="password" id="traktApiKey" placeholder="Your Trakt Client ID">
+                        <small style="color:#888;">Create a free app at trakt.tv/oauth/applications to get a Client ID</small>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
                     <label>Plex Token</label>
                     <input type="password" id="plexToken" placeholder="Your Plex authentication token">
                 </div>
                 <div class="form-group">
                     <label>TMDB API Key</label>
                     <input type="password" id="tmdbKey" placeholder="Your TMDB API key">
+                    <small style="color:#888;">Required for streaming availability checks. Get a free key at themoviedb.org</small>
                 </div>
             </div>
             
@@ -580,7 +654,18 @@
     <script>
         let syncInterval = null;
         let isSyncing = false;
-        
+        let currentSource = 'imdb';
+
+        function selectSource(source) {
+            currentSource = source;
+            // Update buttons
+            document.querySelectorAll('.source-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('src-' + source).classList.add('active');
+            // Show/hide field sections
+            document.querySelectorAll('.source-fields').forEach(el => el.classList.remove('active'));
+            document.getElementById('fields-' + source).classList.add('active');
+        }
+
         window.onload = function() {
             loadConfig();
             loadStatus();
@@ -612,8 +697,16 @@
             try {
                 const response = await fetch('/api/config');
                 const config = await response.json();
-                
+
+                // Restore list source
+                if (config.listSource) {
+                    selectSource(config.listSource);
+                }
+
                 document.getElementById('imdbUrl').value = config.imdbListUrl || '';
+                document.getElementById('tmdbListId').value = config.tmdbListId || '';
+                document.getElementById('traktUrl').value = config.traktListUrl || '';
+                document.getElementById('traktApiKey').value = config.traktApiKey || '';
                 document.getElementById('plexToken').value = config.plexToken || '';
                 document.getElementById('tmdbKey').value = config.tmdbApiKey || '';
                 
@@ -679,7 +772,11 @@
             });
             
             const config = {
+                listSource: currentSource,
                 imdbListUrl: document.getElementById('imdbUrl').value,
+                tmdbListId: document.getElementById('tmdbListId').value,
+                traktListUrl: document.getElementById('traktUrl').value,
+                traktApiKey: document.getElementById('traktApiKey').value,
                 plexToken: document.getElementById('plexToken').value,
                 tmdbApiKey: document.getElementById('tmdbKey').value,
                 streamingServices: streamingServices
