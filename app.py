@@ -423,12 +423,14 @@ def scrape_custom_list(list_url):
         add_log(f"Error scraping custom list: {str(e)}", 'error')
         return []
 
-def get_tmdb_list(list_id, api_key):
+def get_tmdb_list(list_id, api_key, session_id=None):
     """Fetch items from a TMDB list by list ID"""
     items = []
     try:
         url = f"https://api.themoviedb.org/3/list/{list_id}"
         params = {'api_key': api_key}
+        if session_id:
+            params['session_id'] = session_id
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
@@ -968,7 +970,7 @@ def sync_watchlist():
 
     elif list_source == 'tmdb':
         add_log(f"TMDB List ID: {config['tmdbListId']}", 'info')
-        items = get_tmdb_list(config['tmdbListId'], config['tmdbApiKey'])
+        items = get_tmdb_list(config['tmdbListId'], config['tmdbApiKey'], config.get('tmdbSessionId'))
         if not items:
             add_log("No items found in TMDB list. Check that the list is public.", 'warning')
             return
