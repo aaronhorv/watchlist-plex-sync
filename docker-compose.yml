@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  imdb-plex-sync:
+  watchlist-plex-sync:
     build: .
-    container_name: imdb-plex-sync
+    container_name: watchlist-plex-sync
     ports:
       - "5000:5000"
     volumes:

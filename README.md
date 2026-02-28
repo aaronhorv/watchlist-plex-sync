@@ -112,7 +112,7 @@ Config is preserved in `./config/`.
 
 **Container won't start**
 ```bash
-docker logs imdb-plex-sync
+docker logs watchlist-plex-sync
 docker compose down && docker compose up -d --build
 ```
 
