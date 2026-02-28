@@ -28,6 +28,9 @@ def load_config():
         'tmdbSessionId': '',
         'traktListUrl': '',
         'traktApiKey': '',
+        'traktClientSecret': '',
+        'traktAccessToken': '',
+        'traktRefreshToken': '',
         'plexToken': '',
         'tmdbApiKey': '',
         'streamingServices': []  # Now stores [{"id": 8, "region": "DE"}, ...]
@@ -507,12 +510,15 @@ def get_tmdb_watchlist(account_id, session_id, api_key):
     return items
 
 
-def get_trakt_list(list_url, trakt_api_key):
+def get_trakt_list(list_url, trakt_api_key, trakt_access_token=None):
     """Fetch items from a Trakt list URL using the Trakt API.
 
     Supported URL formats:
       https://trakt.tv/users/<username>/watchlist
       https://trakt.tv/users/<username>/lists/<list-slug>
+    When trakt_access_token is provided it is sent as a Bearer token,
+    which allows access to private lists and resolves 'me' as the
+    authenticated user.
     """
     items = []
     try:
@@ -535,6 +541,8 @@ def get_trakt_list(list_url, trakt_api_key):
             'trakt-api-version': '2',
             'trakt-api-key': trakt_api_key,
         }
+        if trakt_access_token:
+            headers['Authorization'] = f'Bearer {trakt_access_token}'
 
         page = 1
         while True:
@@ -986,7 +994,7 @@ def sync_watchlist():
 
     elif list_source == 'trakt':
         add_log(f"Trakt List URL: {config['traktListUrl']}", 'info')
-        items = get_trakt_list(config['traktListUrl'], config['traktApiKey'])
+        items = get_trakt_list(config['traktListUrl'], config['traktApiKey'], config.get('traktAccessToken'))
         if not items:
             add_log("No items found in Trakt list. Check that the list is public and API key is valid.", 'warning')
             return
@@ -1144,6 +1152,62 @@ def get_tmdb_account():
         return jsonify({'account_id': data.get('id'), 'username': data.get('username', '')})
     except requests.exceptions.HTTPError as e:
         return jsonify({'error': f'TMDB error: {e.response.status_code}'}), e.response.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/trakt/device-code', methods=['POST'])
+def trakt_device_code():
+    config = load_config()
+    client_id = config.get('traktApiKey', '')
+    if not client_id:
+        return jsonify({'error': 'Trakt Client ID not configured — save it first'}), 400
+    try:
+        resp = requests.post('https://api.trakt.tv/oauth/device/code',
+                             json={'client_id': client_id}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        return jsonify({
+            'device_code': data.get('device_code'),
+            'user_code': data.get('user_code'),
+            'verification_url': data.get('verification_url'),
+            'expires_in': data.get('expires_in'),
+            'interval': data.get('interval'),
+        })
+    except requests.exceptions.HTTPError as e:
+        return jsonify({'error': f'Trakt error: {e.response.status_code}'}), e.response.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/trakt/device-token', methods=['POST'])
+def trakt_device_token():
+    config = load_config()
+    client_id = config.get('traktApiKey', '')
+    body = request.json or {}
+    client_secret = body.get('client_secret', '').strip() or config.get('traktClientSecret', '')
+    device_code = body.get('device_code', '').strip()
+    if not client_id or not client_secret or not device_code:
+        return jsonify({'error': 'client_id, client_secret and device_code are required'}), 400
+    try:
+        resp = requests.post('https://api.trakt.tv/oauth/device/token',
+                             json={'code': device_code, 'client_id': client_id, 'client_secret': client_secret},
+                             timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            config['traktAccessToken'] = data.get('access_token')
+            config['traktRefreshToken'] = data.get('refresh_token')
+            save_config(config)
+            add_log("Trakt OAuth access token obtained and saved", 'success')
+            return jsonify({'status': 'success'})
+        elif resp.status_code == 400:
+            return jsonify({'status': 'pending'}), 400
+        elif resp.status_code == 418:
+            return jsonify({'status': 'denied', 'error': 'You denied the authorization request'}), 418
+        elif resp.status_code == 410:
+            return jsonify({'status': 'expired', 'error': 'Device code expired — restart the flow'}), 410
+        elif resp.status_code == 429:
+            return jsonify({'status': 'slow_down'}), 429
+        else:
+            return jsonify({'error': f'Trakt error: {resp.status_code}'}), resp.status_code
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

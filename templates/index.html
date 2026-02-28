@@ -553,13 +553,39 @@
                     <div class="source-fields" id="fields-trakt">
                         <div class="form-group">
                             <label>Trakt List URL</label>
-                            <input type="text" id="traktUrl" placeholder="https://trakt.tv/users/username/watchlist">
-                            <small style="color:#888;">Your Trakt watchlist or custom list URL (must be public)</small>
+                            <input type="text" id="traktUrl" placeholder="https://app.trakt.tv/users/me/watchlist">
+                            <small style="color:#888;">Your Trakt watchlist or custom list URL</small>
                         </div>
                         <div class="form-group">
-                            <label>Trakt API Key (Client ID)</label>
+                            <label>Trakt Client ID</label>
                             <input type="password" id="traktApiKey" placeholder="Your Trakt Client ID">
-                            <small style="color:#888;">Create a free app at trakt.tv/oauth/applications to get a Client ID</small>
+                            <small style="color:#888;">Create a free app at <a href="https://trakt.tv/oauth/applications" target="_blank" style="color:#667eea;">trakt.tv/oauth/applications</a></small>
+                        </div>
+                        <div class="form-group">
+                            <label>Trakt Client Secret</label>
+                            <input type="password" id="traktClientSecret" placeholder="Your Trakt Client Secret">
+                        </div>
+
+                        <!-- Step 1 -->
+                        <div style="margin-bottom:16px;">
+                            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                                <button type="button" class="btn" id="traktAuthBtn" onclick="startTraktAuth()"
+                                        style="padding:10px 20px; font-size:14px;">Step 1: Authorize with Trakt</button>
+                                <span id="traktAuthStatus" style="font-size:14px; color:#555;"></span>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: User code (hidden until Step 1) -->
+                        <div id="traktCodeSection" style="display:none; margin-bottom:16px; padding:14px; background:#f0f4ff; border-radius:8px; border:1px solid #c5d0f5;">
+                            <p style="margin-bottom:8px; font-size:14px; color:#333; font-weight:500;">Step 2: Enter this code at Trakt</p>
+                            <div id="traktUserCode" style="font-size:28px; font-weight:700; letter-spacing:6px; color:#667eea; margin-bottom:8px;"></div>
+                            <a id="traktVerifyLink" href="https://trakt.tv/activate" target="_blank" style="color:#667eea; font-size:14px;">trakt.tv/activate</a>
+                            <p style="margin-top:8px; font-size:13px; color:#888;">Enter the code above, then wait — this page will update automatically when authorized.</p>
+                            <p style="margin-top:4px; font-size:13px; color:#555;" id="traktPollStatus"></p>
+                        </div>
+
+                        <div id="traktSuccessSection" style="display:none; margin-bottom:16px; padding:10px 14px; background:#d4edda; border-radius:8px; border:1px solid #c3e6cb; color:#155724; font-size:14px; font-weight:500;">
+                            ✓ Authorized! Access token saved. You can re-authorize at any time.
                         </div>
                     </div>
 
@@ -783,6 +809,10 @@
                 document.getElementById('tmdbSessionId').value = config.tmdbSessionId || '';
                 document.getElementById('traktUrl').value = config.traktListUrl || '';
                 document.getElementById('traktApiKey').value = config.traktApiKey || '';
+                document.getElementById('traktClientSecret').value = config.traktClientSecret || '';
+                if (config.traktAccessToken) {
+                    document.getElementById('traktSuccessSection').style.display = 'block';
+                }
                 document.getElementById('plexToken').value = config.plexToken || '';
                 document.getElementById('tmdbKey').value = config.tmdbApiKey || '';
                 
@@ -847,7 +877,13 @@
                 }
             });
             
+            // Fetch current saved config to preserve backend-only fields
+            // (traktAccessToken, traktRefreshToken) that are never shown in the UI
+            let saved = {};
+            try { saved = await fetch('/api/config').then(r => r.json()); } catch (_) {}
+
             const config = {
+                ...saved,
                 listSource: currentSource,
                 imdbListUrl: document.getElementById('imdbUrl').value,
                 tmdbListId: document.getElementById('tmdbListId').value,
@@ -855,11 +891,12 @@
                 tmdbSessionId: document.getElementById('tmdbSessionId').value,
                 traktListUrl: document.getElementById('traktUrl').value,
                 traktApiKey: document.getElementById('traktApiKey').value,
+                traktClientSecret: document.getElementById('traktClientSecret').value,
                 plexToken: document.getElementById('plexToken').value,
                 tmdbApiKey: document.getElementById('tmdbKey').value,
                 streamingServices: streamingServices
             };
-            
+
             try {
                 const response = await fetch('/api/config', {
                     method: 'POST',
@@ -1040,6 +1077,81 @@
                 console.error('Error loading results:', error);
             }
         }
+        let _traktDeviceCode = null;
+        let _traktPollTimer = null;
+        let _traktPollSeconds = 5;
+
+        async function startTraktAuth() {
+            const btn = document.getElementById('traktAuthBtn');
+            const statusEl = document.getElementById('traktAuthStatus');
+            // Save first so backend has the latest Client ID
+            await saveConfig();
+            if (_traktPollTimer) { clearInterval(_traktPollTimer); _traktPollTimer = null; }
+            btn.disabled = true;
+            statusEl.textContent = 'Requesting device code…';
+            statusEl.style.color = '#555';
+            try {
+                const res = await fetch('/api/trakt/device-code', {method: 'POST'});
+                const data = await res.json();
+                if (res.ok && data.device_code) {
+                    _traktDeviceCode = data.device_code;
+                    _traktPollSeconds = data.interval || 5;
+                    document.getElementById('traktUserCode').textContent = data.user_code;
+                    const link = document.getElementById('traktVerifyLink');
+                    link.href = data.verification_url || 'https://trakt.tv/activate';
+                    link.textContent = data.verification_url || 'trakt.tv/activate';
+                    document.getElementById('traktCodeSection').style.display = 'block';
+                    document.getElementById('traktSuccessSection').style.display = 'none';
+                    statusEl.textContent = '';
+                    startTraktPolling();
+                } else {
+                    statusEl.textContent = 'Error: ' + (data.error || 'Unknown');
+                    statusEl.style.color = '#dc3545';
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                statusEl.textContent = 'Network error: ' + e.message;
+                statusEl.style.color = '#dc3545';
+                btn.disabled = false;
+            }
+        }
+
+        function startTraktPolling() {
+            const pollStatus = document.getElementById('traktPollStatus');
+            pollStatus.textContent = 'Waiting for authorization…';
+            const clientSecret = document.getElementById('traktClientSecret').value.trim();
+            _traktPollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/trakt/device-token', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({device_code: _traktDeviceCode, client_secret: clientSecret})
+                    });
+                    const data = await res.json();
+                    if (res.status === 200 && data.status === 'success') {
+                        clearInterval(_traktPollTimer);
+                        _traktPollTimer = null;
+                        document.getElementById('traktCodeSection').style.display = 'none';
+                        document.getElementById('traktSuccessSection').style.display = 'block';
+                        document.getElementById('traktAuthBtn').disabled = false;
+                        document.getElementById('traktAuthStatus').textContent = '';
+                        _traktDeviceCode = null;
+                    } else if (res.status === 429) {
+                        _traktPollSeconds *= 2;
+                        clearInterval(_traktPollTimer);
+                        _traktPollTimer = null;
+                        setTimeout(startTraktPolling, _traktPollSeconds * 1000);
+                    } else if (res.status === 418 || res.status === 410) {
+                        clearInterval(_traktPollTimer);
+                        _traktPollTimer = null;
+                        pollStatus.textContent = data.error || 'Authorization failed — restart.';
+                        document.getElementById('traktAuthBtn').disabled = false;
+                    }
+                    // 400 = still pending, keep polling
+                } catch (e) { /* network hiccup, keep polling */ }
+            }, _traktPollSeconds * 1000);
+        }
+
         let _tmdbRequestToken = null;
 
         async function getTmdbRequestToken() {
