@@ -388,6 +388,46 @@
         .source-fields.active {
             display: block;
         }
+
+        .config-sub-tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 0;
+            margin-bottom: 0;
+        }
+
+        .config-sub-tab {
+            background: #f0f0f0;
+            color: #555;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 500;
+            transition: background 0.2s, color 0.2s;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .config-sub-tab:hover {
+            background: #e0e0e0;
+        }
+
+        .config-sub-tab.active {
+            background: white;
+            color: #667eea;
+            border-color: #667eea;
+        }
+
+        .config-sub-content {
+            display: none;
+        }
+
+        .config-sub-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -456,203 +496,224 @@
         </div>
         
         <div id="config-tab" class="tab-content">
-            <div class="card">
-                <h2>⚙️ List Source & API Configuration</h2>
-
-                <p style="margin-bottom: 12px; color: #555; font-weight: 500;">Select your watchlist source:</p>
-                <div class="source-selector">
-                    <button class="source-btn active" id="src-imdb" onclick="selectSource('imdb')">🎬 IMDB</button>
-                    <button class="source-btn" id="src-tmdb" onclick="selectSource('tmdb')">🎥 TMDB List</button>
-                    <button class="source-btn" id="src-tmdb_watchlist" onclick="selectSource('tmdb_watchlist')">👁️ TMDB Watchlist</button>
-                    <button class="source-btn" id="src-trakt" onclick="selectSource('trakt')">📡 Trakt</button>
-                </div>
-
-                <!-- IMDB fields -->
-                <div class="source-fields active" id="fields-imdb">
-                    <div class="form-group">
-                        <label>IMDB Watchlist URL</label>
-                        <input type="text" id="imdbUrl" placeholder="https://www.imdb.com/user/urXXXXXXXX/watchlist or https://www.imdb.com/list/lsXXXXXXXX/">
-                        <small style="color:#888;">Your IMDB watchlist or list URL (must be public)</small>
-                    </div>
-                </div>
-
-                <!-- TMDB List fields -->
-                <div class="source-fields" id="fields-tmdb">
-                    <div class="form-group">
-                        <label>TMDB List ID</label>
-                        <input type="text" id="tmdbListId" placeholder="e.g. 8303833">
-                        <small style="color:#888;">The numeric ID from your TMDB list URL (themoviedb.org/list/XXXXXXX)</small>
-                    </div>
-                </div>
-
-                <!-- TMDB Watchlist fields -->
-                <div class="source-fields" id="fields-tmdb_watchlist">
-                    <div class="form-group">
-                        <label>TMDB Account ID</label>
-                        <input type="text" id="tmdbAccountId" placeholder="e.g. 12345678">
-                        <small style="color:#888;">Find this at themoviedb.org → Account → Settings (shown in the URL)</small>
-                    </div>
-                    <div class="form-group">
-                        <label>TMDB Session ID</label>
-                        <input type="password" id="tmdbSessionId" placeholder="Your TMDB session_id">
-                        <small style="color:#888;">Generate via the TMDB API authentication flow — see <a href="https://developers.themoviedb.org/3/authentication/how-do-i-generate-a-session-id" target="_blank" style="color:#667eea;">TMDB docs</a></small>
-                    </div>
-                </div>
-
-                <!-- Trakt fields -->
-                <div class="source-fields" id="fields-trakt">
-                    <div class="form-group">
-                        <label>Trakt List URL</label>
-                        <input type="text" id="traktUrl" placeholder="https://trakt.tv/users/username/watchlist">
-                        <small style="color:#888;">Your Trakt watchlist or custom list URL (must be public)</small>
-                    </div>
-                    <div class="form-group">
-                        <label>Trakt API Key (Client ID)</label>
-                        <input type="password" id="traktApiKey" placeholder="Your Trakt Client ID">
-                        <small style="color:#888;">Create a free app at trakt.tv/oauth/applications to get a Client ID</small>
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-top: 16px;">
-                    <label>Plex Token</label>
-                    <input type="password" id="plexToken" placeholder="Your Plex authentication token">
-                </div>
-                <div class="form-group">
-                    <label>TMDB API Key</label>
-                    <input type="password" id="tmdbKey" placeholder="Your TMDB API key">
-                    <small style="color:#888;">Required for streaming availability checks. Get a free key at themoviedb.org</small>
+            <!-- Sub-tab navigation -->
+            <div style="background: white; border-radius: 12px 12px 0 0; padding: 20px 30px 0 30px; box-shadow: 0 -4px 20px rgba(0,0,0,0.05); margin-bottom: 0;">
+                <div class="config-sub-tabs">
+                    <button class="config-sub-tab active" id="cfg-tab-input" onclick="switchConfigSubTab('input')">📋 Input List</button>
+                    <button class="config-sub-tab" id="cfg-tab-plex" onclick="switchConfigSubTab('plex')">🖥️ Plex &amp; TMDB</button>
                 </div>
             </div>
-            
-            <div class="card">
-                <h2>📺 Streaming Services</h2>
-                <p style="margin-bottom: 20px; color: #666;">Select the streaming services you have access to. Movies available on these services will be skipped during sync.</p>
-                
-                <div id="streamingServices">
-                    <div class="service-item">
-                        <input type="checkbox" id="service-netflix" value="8">
-                        <label for="service-netflix">Netflix</label>
-                        <select id="region-netflix" class="region-select">
-                            <option value="US">US</option>
-                            <option value="DE" selected>DE</option>
-                            <option value="GB">GB</option>
-                            <option value="CA">CA</option>
-                            <option value="FR">FR</option>
-                            <option value="ES">ES</option>
-                            <option value="IT">IT</option>
-                            <option value="BR">BR</option>
-                            <option value="MX">MX</option>
-                            <option value="AU">AU</option>
-                            <option value="JP">JP</option>
-                            <option value="IN">IN</option>
-                            <option value="HU">HU</option>
-                        </select>
+
+            <!-- Sub-tab: Input List -->
+            <div class="config-sub-content active" id="cfg-sub-input">
+                <div class="card" style="border-radius: 0 0 12px 12px; margin-top: 0;">
+                    <p style="margin-bottom: 12px; color: #555; font-weight: 500;">Select your watchlist source:</p>
+                    <div class="source-selector">
+                        <button class="source-btn active" id="src-imdb" onclick="selectSource('imdb')">🎬 IMDB</button>
+                        <button class="source-btn" id="src-tmdb" onclick="selectSource('tmdb')">🎥 TMDB List</button>
+                        <button class="source-btn" id="src-tmdb_watchlist" onclick="selectSource('tmdb_watchlist')">👁️ TMDB Watchlist</button>
+                        <button class="source-btn" id="src-trakt" onclick="selectSource('trakt')">📡 Trakt</button>
                     </div>
-                    
-                    <div class="service-item">
-                        <input type="checkbox" id="service-prime" value="119">
-                        <label for="service-prime">Amazon Prime Video</label>
-                        <select id="region-prime" class="region-select">
-                            <option value="US">US</option>
-                            <option value="DE" selected>DE</option>
-                            <option value="GB">GB</option>
-                            <option value="CA">CA</option>
-                            <option value="FR">FR</option>
-                            <option value="ES">ES</option>
-                            <option value="IT">IT</option>
-                            <option value="BR">BR</option>
-                            <option value="MX">MX</option>
-                            <option value="AU">AU</option>
-                            <option value="JP">JP</option>
-                            <option value="IN">IN</option>
-                            <option value="HU">HU</option>
-                        </select>
+
+                    <!-- IMDB fields -->
+                    <div class="source-fields active" id="fields-imdb">
+                        <div class="form-group">
+                            <label>IMDB Watchlist URL</label>
+                            <input type="text" id="imdbUrl" placeholder="https://www.imdb.com/user/urXXXXXXXX/watchlist or https://www.imdb.com/list/lsXXXXXXXX/">
+                            <small style="color:#888;">Your IMDB watchlist or list URL (must be public)</small>
+                        </div>
                     </div>
-                    
-                    <div class="service-item">
-                        <input type="checkbox" id="service-disney" value="337">
-                        <label for="service-disney">Disney+</label>
-                        <select id="region-disney" class="region-select">
-                            <option value="US">US</option>
-                            <option value="DE" selected>DE</option>
-                            <option value="GB">GB</option>
-                            <option value="CA">CA</option>
-                            <option value="FR">FR</option>
-                            <option value="ES">ES</option>
-                            <option value="IT">IT</option>
-                            <option value="BR">BR</option>
-                            <option value="MX">MX</option>
-                            <option value="AU">AU</option>
-                            <option value="JP">JP</option>
-                            <option value="HU">HU</option>
-                        </select>
+
+                    <!-- TMDB List fields -->
+                    <div class="source-fields" id="fields-tmdb">
+                        <div class="form-group">
+                            <label>TMDB List ID</label>
+                            <input type="text" id="tmdbListId" placeholder="e.g. 8303833">
+                            <small style="color:#888;">The numeric ID from your TMDB list URL (themoviedb.org/list/XXXXXXX)</small>
+                        </div>
                     </div>
-                    
-                    <div class="service-item">
-                        <input type="checkbox" id="service-hbo" value="384">
-                        <label for="service-hbo">HBO Max</label>
-                        <select id="region-hbo" class="region-select" onchange="updateHBOValue(this)">
-                            <option value="US" data-provider="384">US</option>
-                            <option value="DE" data-provider="384" selected>DE</option>
-                            <option value="GB" data-provider="384">GB</option>
-                            <option value="ES" data-provider="384">ES</option>
-                            <option value="BR" data-provider="384">BR</option>
-                            <option value="MX" data-provider="384">MX</option>
-                            <option value="HU" data-provider="1899">HU</option>
-                        </select>
+
+                    <!-- TMDB Watchlist fields -->
+                    <div class="source-fields" id="fields-tmdb_watchlist">
+                        <div class="form-group">
+                            <label>TMDB Session ID</label>
+                            <input type="password" id="tmdbSessionId" placeholder="Your TMDB session_id">
+                            <small style="color:#888;">Generate via the TMDB API authentication flow — see <a href="https://developers.themoviedb.org/3/authentication/how-do-i-generate-a-session-id" target="_blank" style="color:#667eea;">TMDB docs</a></small>
+                        </div>
+                        <div class="form-group" style="margin-top: 4px; display: flex; align-items: center;">
+                            <button type="button" class="btn btn-secondary" id="fetchAccountIdBtn" onclick="fetchTmdbAccountId()" style="margin-left: 0; padding: 10px 20px; font-size: 14px;">Fetch Account ID</button>
+                            <span id="fetchAccountIdStatus" style="margin-left: 12px; font-size: 14px; color: #555;"></span>
+                        </div>
+                        <div class="form-group">
+                            <label>TMDB Account ID</label>
+                            <input type="text" id="tmdbAccountId" placeholder="Populated automatically via Fetch, or enter manually">
+                        </div>
                     </div>
-                    
-                    <div class="service-item">
-                        <input type="checkbox" id="service-apple" value="350">
-                        <label for="service-apple">Apple TV+</label>
-                        <select id="region-apple" class="region-select">
-                            <option value="US">US</option>
-                            <option value="DE" selected>DE</option>
-                            <option value="GB">GB</option>
-                            <option value="CA">CA</option>
-                            <option value="FR">FR</option>
-                            <option value="ES">ES</option>
-                            <option value="IT">IT</option>
-                            <option value="BR">BR</option>
-                            <option value="MX">MX</option>
-                            <option value="AU">AU</option>
-                            <option value="JP">JP</option>
-                            <option value="HU">HU</option>
-                        </select>
+
+                    <!-- Trakt fields -->
+                    <div class="source-fields" id="fields-trakt">
+                        <div class="form-group">
+                            <label>Trakt List URL</label>
+                            <input type="text" id="traktUrl" placeholder="https://trakt.tv/users/username/watchlist">
+                            <small style="color:#888;">Your Trakt watchlist or custom list URL (must be public)</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Trakt API Key (Client ID)</label>
+                            <input type="password" id="traktApiKey" placeholder="Your Trakt Client ID">
+                            <small style="color:#888;">Create a free app at trakt.tv/oauth/applications to get a Client ID</small>
+                        </div>
                     </div>
-                    
-                    <div class="service-item">
-                        <input type="checkbox" id="service-paramount" value="531">
-                        <label for="service-paramount">Paramount+</label>
-                        <select id="region-paramount" class="region-select">
-                            <option value="US">US</option>
-                            <option value="DE" selected>DE</option>
-                            <option value="GB">GB</option>
-                            <option value="CA">CA</option>
-                            <option value="AU">AU</option>
-                            <option value="HU">HU</option>
-                        </select>
-                    </div>
-                    
-                    <div class="service-item">
-                        <input type="checkbox" id="service-hulu" value="15">
-                        <label for="service-hulu">Hulu</label>
-                        <select id="region-hulu" class="region-select">
-                            <option value="US" selected>US</option>
-                            <option value="JP">JP</option>
-                        </select>
-                    </div>
-                    
-                    <div class="service-item">
-                        <input type="checkbox" id="service-peacock" value="386">
-                        <label for="service-peacock">Peacock</label>
-                        <select id="region-peacock" class="region-select">
-                            <option value="US" selected>US</option>
-                        </select>
-                    </div>
+
+                    <button class="btn" onclick="saveConfig()" style="margin-top: 20px;">💾 Save Configuration</button>
                 </div>
-                
-                <button class="btn" onclick="saveConfig()" style="margin-top: 20px;">💾 Save Configuration</button>
+            </div>
+
+            <!-- Sub-tab: Plex & TMDB -->
+            <div class="config-sub-content" id="cfg-sub-plex">
+                <div class="card" style="border-radius: 0 0 12px 12px; margin-top: 0; margin-bottom: 20px;">
+                    <h2>🖥️ Plex &amp; TMDB API</h2>
+                    <div class="form-group">
+                        <label>Plex Token</label>
+                        <input type="password" id="plexToken" placeholder="Your Plex authentication token">
+                    </div>
+                    <div class="form-group">
+                        <label>TMDB API Key</label>
+                        <input type="password" id="tmdbKey" placeholder="Your TMDB API key (v3)">
+                        <small style="color:#888;">Required for streaming availability checks and TMDB sources. Get a free key at <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color:#667eea;">themoviedb.org</a></small>
+                    </div>
+                    <button class="btn" onclick="saveConfig()" style="margin-top: 4px;">💾 Save Configuration</button>
+                </div>
+
+                <div class="card">
+                    <h2>📺 Streaming Services</h2>
+                    <p style="margin-bottom: 20px; color: #666;">Select the streaming services you have access to. Movies available on these services will be skipped during sync.</p>
+
+                    <div id="streamingServices">
+                        <div class="service-item">
+                            <input type="checkbox" id="service-netflix" value="8">
+                            <label for="service-netflix">Netflix</label>
+                            <select id="region-netflix" class="region-select">
+                                <option value="US">US</option>
+                                <option value="DE" selected>DE</option>
+                                <option value="GB">GB</option>
+                                <option value="CA">CA</option>
+                                <option value="FR">FR</option>
+                                <option value="ES">ES</option>
+                                <option value="IT">IT</option>
+                                <option value="BR">BR</option>
+                                <option value="MX">MX</option>
+                                <option value="AU">AU</option>
+                                <option value="JP">JP</option>
+                                <option value="IN">IN</option>
+                                <option value="HU">HU</option>
+                            </select>
+                        </div>
+
+                        <div class="service-item">
+                            <input type="checkbox" id="service-prime" value="119">
+                            <label for="service-prime">Amazon Prime Video</label>
+                            <select id="region-prime" class="region-select">
+                                <option value="US">US</option>
+                                <option value="DE" selected>DE</option>
+                                <option value="GB">GB</option>
+                                <option value="CA">CA</option>
+                                <option value="FR">FR</option>
+                                <option value="ES">ES</option>
+                                <option value="IT">IT</option>
+                                <option value="BR">BR</option>
+                                <option value="MX">MX</option>
+                                <option value="AU">AU</option>
+                                <option value="JP">JP</option>
+                                <option value="IN">IN</option>
+                                <option value="HU">HU</option>
+                            </select>
+                        </div>
+
+                        <div class="service-item">
+                            <input type="checkbox" id="service-disney" value="337">
+                            <label for="service-disney">Disney+</label>
+                            <select id="region-disney" class="region-select">
+                                <option value="US">US</option>
+                                <option value="DE" selected>DE</option>
+                                <option value="GB">GB</option>
+                                <option value="CA">CA</option>
+                                <option value="FR">FR</option>
+                                <option value="ES">ES</option>
+                                <option value="IT">IT</option>
+                                <option value="BR">BR</option>
+                                <option value="MX">MX</option>
+                                <option value="AU">AU</option>
+                                <option value="JP">JP</option>
+                                <option value="HU">HU</option>
+                            </select>
+                        </div>
+
+                        <div class="service-item">
+                            <input type="checkbox" id="service-hbo" value="384">
+                            <label for="service-hbo">HBO Max</label>
+                            <select id="region-hbo" class="region-select" onchange="updateHBOValue(this)">
+                                <option value="US" data-provider="384">US</option>
+                                <option value="DE" data-provider="384" selected>DE</option>
+                                <option value="GB" data-provider="384">GB</option>
+                                <option value="ES" data-provider="384">ES</option>
+                                <option value="BR" data-provider="384">BR</option>
+                                <option value="MX" data-provider="384">MX</option>
+                                <option value="HU" data-provider="1899">HU</option>
+                            </select>
+                        </div>
+
+                        <div class="service-item">
+                            <input type="checkbox" id="service-apple" value="350">
+                            <label for="service-apple">Apple TV+</label>
+                            <select id="region-apple" class="region-select">
+                                <option value="US">US</option>
+                                <option value="DE" selected>DE</option>
+                                <option value="GB">GB</option>
+                                <option value="CA">CA</option>
+                                <option value="FR">FR</option>
+                                <option value="ES">ES</option>
+                                <option value="IT">IT</option>
+                                <option value="BR">BR</option>
+                                <option value="MX">MX</option>
+                                <option value="AU">AU</option>
+                                <option value="JP">JP</option>
+                                <option value="HU">HU</option>
+                            </select>
+                        </div>
+
+                        <div class="service-item">
+                            <input type="checkbox" id="service-paramount" value="531">
+                            <label for="service-paramount">Paramount+</label>
+                            <select id="region-paramount" class="region-select">
+                                <option value="US">US</option>
+                                <option value="DE" selected>DE</option>
+                                <option value="GB">GB</option>
+                                <option value="CA">CA</option>
+                                <option value="AU">AU</option>
+                                <option value="HU">HU</option>
+                            </select>
+                        </div>
+
+                        <div class="service-item">
+                            <input type="checkbox" id="service-hulu" value="15">
+                            <label for="service-hulu">Hulu</label>
+                            <select id="region-hulu" class="region-select">
+                                <option value="US" selected>US</option>
+                                <option value="JP">JP</option>
+                            </select>
+                        </div>
+
+                        <div class="service-item">
+                            <input type="checkbox" id="service-peacock" value="386">
+                            <label for="service-peacock">Peacock</label>
+                            <select id="region-peacock" class="region-select">
+                                <option value="US" selected>US</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button class="btn" onclick="saveConfig()" style="margin-top: 20px;">💾 Save Configuration</button>
+                </div>
             </div>
         </div>
         
@@ -955,7 +1016,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${results.map(result => `
+                            ${[...results].reverse().map(result => `
                                 <tr>
                                     <td><strong>${result.title || result.original_title}</strong></td>
                                     <td>${result.year || 'N/A'}</td>
@@ -975,6 +1036,43 @@
                 container.innerHTML = tableHTML;
             } catch (error) {
                 console.error('Error loading results:', error);
+            }
+        }
+        function switchConfigSubTab(name) {
+            document.querySelectorAll('.config-sub-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.config-sub-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('cfg-tab-' + name).classList.add('active');
+            document.getElementById('cfg-sub-' + name).classList.add('active');
+        }
+
+        async function fetchTmdbAccountId() {
+            const sessionId = document.getElementById('tmdbSessionId').value.trim();
+            const statusEl = document.getElementById('fetchAccountIdStatus');
+            const btn = document.getElementById('fetchAccountIdBtn');
+            if (!sessionId) {
+                statusEl.textContent = 'Enter a Session ID first.';
+                statusEl.style.color = '#dc3545';
+                return;
+            }
+            btn.disabled = true;
+            statusEl.textContent = 'Fetching…';
+            statusEl.style.color = '#555';
+            try {
+                const res = await fetch(`/api/tmdb/account?session_id=${encodeURIComponent(sessionId)}`);
+                const data = await res.json();
+                if (res.ok && data.account_id) {
+                    document.getElementById('tmdbAccountId').value = data.account_id;
+                    statusEl.textContent = `✓ ${data.username} (ID: ${data.account_id})`;
+                    statusEl.style.color = '#28a745';
+                } else {
+                    statusEl.textContent = 'Error: ' + (data.error || 'Unknown');
+                    statusEl.style.color = '#dc3545';
+                }
+            } catch (e) {
+                statusEl.textContent = 'Network error: ' + e.message;
+                statusEl.style.color = '#dc3545';
+            } finally {
+                btn.disabled = false;
             }
         }
     </script>

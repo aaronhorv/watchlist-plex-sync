@@ -1125,6 +1125,28 @@ def update_config():
     add_log("Configuration updated", 'success')
     return jsonify({'success': True})
 
+@app.route('/api/tmdb/account', methods=['GET'])
+def get_tmdb_account():
+    session_id = request.args.get('session_id', '').strip()
+    config = load_config()
+    api_key = config.get('tmdbApiKey', '')
+
+    if not session_id:
+        return jsonify({'error': 'session_id is required'}), 400
+    if not api_key:
+        return jsonify({'error': 'TMDB API Key not configured — save it in the Plex & TMDB tab first'}), 400
+
+    try:
+        resp = requests.get('https://api.themoviedb.org/3/account',
+                            params={'api_key': api_key, 'session_id': session_id}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        return jsonify({'account_id': data.get('id'), 'username': data.get('username', '')})
+    except requests.exceptions.HTTPError as e:
+        return jsonify({'error': f'TMDB error: {e.response.status_code}'}), e.response.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/logs', methods=['GET'])
 def get_logs():
     if os.path.exists(LOGS_FILE):
