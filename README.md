@@ -96,25 +96,6 @@ Config is preserved in `./config/`.
 
 ---
 
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | Web dashboard |
-| `GET` | `/health` | Health check |
-| `GET/POST` | `/api/config` | Get / update configuration |
-| `POST` | `/api/sync` | Trigger manual sync |
-| `GET` | `/api/status` | Sync status |
-| `GET` | `/api/logs` | Application logs |
-| `GET` | `/api/results` | Sync results |
-| `GET` | `/api/tmdb/account` | Fetch TMDB account ID |
-| `GET` | `/api/tmdb/token` | Get TMDB request token |
-| `POST` | `/api/tmdb/session` | Create TMDB session |
-| `POST` | `/api/trakt/device-code` | Start Trakt OAuth flow |
-| `POST` | `/api/trakt/device-token` | Poll for Trakt access token |
-
----
-
 ## Troubleshooting
 
 **IMDB: fewer items than expected**
