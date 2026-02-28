@@ -10,7 +10,6 @@ Sync your watchlist to Plex automatically. Supports **IMDB**, **TMDB**, and **Tr
 
 - **Multiple input sources** — IMDB watchlist/list, TMDB list, TMDB watchlist, or Trakt watchlist
 - **Streaming service filter** — skip items already available on Netflix, Disney+, Prime, HBO, Apple TV+, Paramount+, Hulu, Peacock
-- **Full IMDB extraction** — fetches all items via embedded JSON (not just the first 25)
 - **OAuth flows built in** — authenticate with TMDB and Trakt directly from the web UI
 - **Auto sync** — runs every 6 hours; manual trigger available
 - **Web dashboard** — configure, monitor, and view results from a browser
@@ -25,7 +24,7 @@ Sync your watchlist to Plex automatically. Supports **IMDB**, **TMDB**, and **Tr
 services:
   imdb-plex-sync:
     build: .
-    container_name: imdb-plex-sync
+    container_name: watchlist-plex-sync
     ports:
       - "5000:5000"
     volumes:
@@ -38,8 +37,8 @@ services:
 Or clone and build locally:
 
 ```bash
-git clone https://github.com/aaronhorv/imdb-plex-sync.git
-cd imdb-plex-sync
+git clone https://github.com/aaronhorv/watchlist-plex-sync.git
+cd watchlist-plex-sync
 docker compose up -d --build
 ```
 
