@@ -516,8 +516,8 @@ def get_trakt_list(list_url, trakt_api_key):
     """
     items = []
     try:
-        match_watchlist = re.search(r'trakt\.tv/users/([^/]+)/watchlist', list_url)
-        match_custom = re.search(r'trakt\.tv/users/([^/]+)/lists/([^/?]+)', list_url)
+        match_watchlist = re.search(r'(?:app\.)?trakt\.tv/users/([^/]+)/watchlist', list_url)
+        match_custom = re.search(r'(?:app\.)?trakt\.tv/users/([^/]+)/lists/([^/?]+)', list_url)
 
         if match_watchlist:
             username = match_watchlist.group(1)
