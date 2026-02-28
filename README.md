@@ -22,7 +22,7 @@ Sync your watchlist to Plex automatically. Supports **IMDB**, **TMDB**, and **Tr
 
 ```yaml
 services:
-  imdb-plex-sync:
+  watchlist-plex-sync:
     build: .
     container_name: watchlist-plex-sync
     ports:
@@ -119,7 +119,7 @@ Config is preserved in `./config/`.
 
 **IMDB: fewer items than expected**
 - Make sure your watchlist is set to public
-- Check Docker logs: `docker logs imdb-plex-sync`
+- Check Docker logs: `docker logs watchlist-plex-sync`
 
 **TMDB 401 errors**
 - Verify your TMDB API Key is saved correctly
