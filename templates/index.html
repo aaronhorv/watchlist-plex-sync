@@ -1084,7 +1084,15 @@
         async function startTraktAuth() {
             const btn = document.getElementById('traktAuthBtn');
             const statusEl = document.getElementById('traktAuthStatus');
-            // Save first so backend has the latest Client ID (silent — no alert during auth flow)
+            // Validate credentials before doing anything
+            const clientId = document.getElementById('traktApiKey').value.trim();
+            const clientSecret = document.getElementById('traktClientSecret').value.trim();
+            if (!clientId || !clientSecret) {
+                statusEl.textContent = 'Enter both Client ID and Client Secret first.';
+                statusEl.style.color = '#dc3545';
+                return;
+            }
+            // Save first so backend has the latest Client ID and Secret
             await saveConfig(true);
             if (_traktPollTimer) { clearInterval(_traktPollTimer); _traktPollTimer = null; }
             btn.disabled = true;
@@ -1119,13 +1127,14 @@
         function startTraktPolling() {
             const pollStatus = document.getElementById('traktPollStatus');
             pollStatus.textContent = 'Waiting for authorization…';
-            // client_secret is read from saved config on the backend (saved by saveConfig(true) above)
+            // Capture credentials now; backend also reads from config as fallback
+            const clientSecret = document.getElementById('traktClientSecret').value.trim();
             _traktPollTimer = setInterval(async () => {
                 try {
                     const res = await fetch('/api/trakt/device-token', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({device_code: _traktDeviceCode})
+                        body: JSON.stringify({device_code: _traktDeviceCode, client_secret: clientSecret})
                     });
                     const data = await res.json();
                     if (res.status === 200 && data.status === 'success') {
