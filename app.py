@@ -1147,6 +1147,53 @@ def get_tmdb_account():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/tmdb/token', methods=['GET'])
+def get_tmdb_token():
+    config = load_config()
+    api_key = config.get('tmdbApiKey', '')
+    if not api_key:
+        return jsonify({'error': 'TMDB API Key not configured — save it in the Plex & TMDB tab first'}), 400
+    try:
+        resp = requests.get('https://api.themoviedb.org/3/authentication/token/new',
+                            params={'api_key': api_key}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        request_token = data.get('request_token')
+        return jsonify({
+            'request_token': request_token,
+            'expires_at': data.get('expires_at'),
+            'approve_url': f"https://www.themoviedb.org/authenticate/{request_token}"
+        })
+    except requests.exceptions.HTTPError as e:
+        return jsonify({'error': f'TMDB error: {e.response.status_code}'}), e.response.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tmdb/session', methods=['POST'])
+def create_tmdb_session():
+    config = load_config()
+    api_key = config.get('tmdbApiKey', '')
+    request_token = (request.json or {}).get('request_token', '').strip()
+    if not api_key:
+        return jsonify({'error': 'TMDB API Key not configured'}), 400
+    if not request_token:
+        return jsonify({'error': 'request_token is required'}), 400
+    try:
+        resp = requests.post('https://api.themoviedb.org/3/authentication/session/new',
+                             params={'api_key': api_key},
+                             json={'request_token': request_token}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        session_id = data.get('session_id')
+        config['tmdbSessionId'] = session_id
+        save_config(config)
+        add_log("TMDB session created and saved", 'success')
+        return jsonify({'session_id': session_id})
+    except requests.exceptions.HTTPError as e:
+        return jsonify({'error': f'TMDB error: {e.response.status_code} — did you approve the token at TMDB?'}), e.response.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/logs', methods=['GET'])
 def get_logs():
     if os.path.exists(LOGS_FILE):
