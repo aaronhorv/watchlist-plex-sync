@@ -535,10 +535,36 @@
 
                     <!-- TMDB Watchlist fields -->
                     <div class="source-fields" id="fields-tmdb_watchlist">
+                        <p style="color:#666; margin-bottom:16px; font-size:14px;">
+                            Authenticate with TMDB to access your watchlist. Your TMDB API Key must be saved in the Plex &amp; TMDB tab first.
+                        </p>
+
+                        <!-- Step 1 -->
+                        <div style="margin-bottom:16px;">
+                            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                                <button type="button" class="btn" id="getTokenBtn" onclick="getTmdbRequestToken()"
+                                        style="padding:10px 20px; font-size:14px;">Step 1: Get Request Token</button>
+                                <span id="tokenStatus" style="font-size:14px; color:#555;"></span>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Approval link (hidden until token obtained) -->
+                        <div id="tmdbApprovalSection" style="display:none; margin-bottom:16px; padding:14px; background:#f0f4ff; border-radius:8px; border:1px solid #c5d0f5;">
+                            <p style="margin-bottom:8px; font-size:14px; color:#333; font-weight:500;">Step 2: Approve the token at TMDB</p>
+                            <a id="tmdbApproveLink" href="#" target="_blank" style="color:#667eea; font-size:14px; word-break:break-all;"></a>
+                            <p style="margin-top:8px; font-size:13px; color:#888;">Click the link above, log in if needed, then come back and click Step 3.</p>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div id="tmdbStep3Section" style="display:none; margin-bottom:16px; align-items:center; gap:12px; flex-wrap:wrap;">
+                            <button type="button" class="btn" id="createSessionBtn" onclick="createTmdbSession()"
+                                    style="padding:10px 20px; font-size:14px;">Step 3: Create Session ID</button>
+                            <span id="sessionStatus" style="font-size:14px; color:#555;"></span>
+                        </div>
+
                         <div class="form-group">
                             <label>TMDB Session ID</label>
-                            <input type="password" id="tmdbSessionId" placeholder="Your TMDB session_id">
-                            <small style="color:#888;">Generate via the TMDB API authentication flow — see <a href="https://developers.themoviedb.org/3/authentication/how-do-i-generate-a-session-id" target="_blank" style="color:#667eea;">TMDB docs</a></small>
+                            <input type="password" id="tmdbSessionId" placeholder="Populated automatically via Step 3, or enter manually">
                         </div>
                         <div class="form-group" style="margin-top: 4px; display: flex; align-items: center;">
                             <button type="button" class="btn btn-secondary" id="fetchAccountIdBtn" onclick="fetchTmdbAccountId()" style="margin-left: 0; padding: 10px 20px; font-size: 14px;">Fetch Account ID</button>
@@ -582,36 +608,6 @@
                         <small style="color:#888;">Required for streaming availability checks and TMDB sources. Get a free key at <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color:#667eea;">themoviedb.org</a></small>
                     </div>
                     <button class="btn" onclick="saveConfig()" style="margin-top: 4px;">💾 Save Configuration</button>
-
-                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #e0e0e0;">
-                    <h3 style="color:#333; margin-bottom:8px; font-size:1.1rem;">🔑 TMDB Session Authentication</h3>
-                    <p style="color:#666; margin-bottom:16px; font-size:14px;">
-                        Generate a session ID to access your TMDB watchlist and private lists.
-                        Save your TMDB API Key above first.
-                    </p>
-
-                    <!-- Step 1 -->
-                    <div style="margin-bottom:16px;">
-                        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                            <button type="button" class="btn" id="getTokenBtn" onclick="getTmdbRequestToken()"
-                                    style="padding:10px 20px; font-size:14px;">Step 1: Get Request Token</button>
-                            <span id="tokenStatus" style="font-size:14px; color:#555;"></span>
-                        </div>
-                    </div>
-
-                    <!-- Step 2: Approval link (hidden until token obtained) -->
-                    <div id="tmdbApprovalSection" style="display:none; margin-bottom:16px; padding:14px; background:#f0f4ff; border-radius:8px; border:1px solid #c5d0f5;">
-                        <p style="margin-bottom:8px; font-size:14px; color:#333; font-weight:500;">Step 2: Approve the token at TMDB</p>
-                        <a id="tmdbApproveLink" href="#" target="_blank" style="color:#667eea; font-size:14px; word-break:break-all;"></a>
-                        <p style="margin-top:8px; font-size:13px; color:#888;">Click the link above, log in if needed, then come back and click Step 3.</p>
-                    </div>
-
-                    <!-- Step 3 -->
-                    <div id="tmdbStep3Section" style="display:none; align-items:center; gap:12px; flex-wrap:wrap;">
-                        <button type="button" class="btn" id="createSessionBtn" onclick="createTmdbSession()"
-                                style="padding:10px 20px; font-size:14px;">Step 3: Create Session ID</button>
-                        <span id="sessionStatus" style="font-size:14px; color:#555;"></span>
-                    </div>
                 </div>
 
                 <div class="card">
