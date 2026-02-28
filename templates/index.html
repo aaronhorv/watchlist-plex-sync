@@ -352,35 +352,6 @@
             border-color: #667eea;
         }
 
-        .source-selector {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-        }
-
-        .source-btn {
-            padding: 10px 22px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            background: white;
-            color: #555;
-            font-size: 15px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: border-color 0.2s, background 0.2s, color 0.2s;
-        }
-
-        .source-btn:hover {
-            border-color: #667eea;
-        }
-
-        .source-btn.active {
-            border-color: #667eea;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
         .source-fields {
             display: none;
         }
@@ -507,12 +478,14 @@
             <!-- Sub-tab: Input List -->
             <div class="config-sub-content active" id="cfg-sub-input">
                 <div class="card" style="border-radius: 0 0 12px 12px; margin-top: 0;">
-                    <p style="margin-bottom: 12px; color: #555; font-weight: 500;">Select your watchlist source:</p>
-                    <div class="source-selector">
-                        <button class="source-btn active" id="src-imdb" onclick="selectSource('imdb')">🎬 IMDB</button>
-                        <button class="source-btn" id="src-tmdb" onclick="selectSource('tmdb')">🎥 TMDB List</button>
-                        <button class="source-btn" id="src-tmdb_watchlist" onclick="selectSource('tmdb_watchlist')">👁️ TMDB Watchlist</button>
-                        <button class="source-btn" id="src-trakt" onclick="selectSource('trakt')">📡 Trakt</button>
+                    <div class="form-group">
+                        <label>Input Source</label>
+                        <select id="sourceSelector" onchange="selectSource(this.value)" style="width:100%; padding:12px; border:2px solid #e0e0e0; border-radius:6px; font-size:15px; cursor:pointer; background:white; color:#333; transition: border-color 0.3s;">
+                            <option value="imdb">🎬 IMDB</option>
+                            <option value="tmdb">🎥 TMDB List</option>
+                            <option value="tmdb_watchlist">👁️ TMDB Watchlist</option>
+                            <option value="trakt">📡 Trakt</option>
+                        </select>
                     </div>
 
                     <!-- IMDB fields -->
@@ -760,9 +733,8 @@
 
         function selectSource(source) {
             currentSource = source;
-            // Update buttons
-            document.querySelectorAll('.source-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('src-' + source).classList.add('active');
+            // Sync dropdown (in case called programmatically from loadConfig)
+            document.getElementById('sourceSelector').value = source;
             // Show/hide field sections
             document.querySelectorAll('.source-fields').forEach(el => el.classList.remove('active'));
             document.getElementById('fields-' + source).classList.add('active');
@@ -945,7 +917,11 @@
             );
             
             if (isSyncing && hasCompleteMessage) {
-                // Keep on sync tab to show results
+                isSyncing = false;
+                document.getElementById('syncStatus').classList.remove('active');
+                const button = document.getElementById('syncButton');
+                button.disabled = false;
+                button.textContent = '🔄 Start Sync Now';
                 loadStatus();
                 loadResults();
             } else if (hasStartMessage && !isSyncing) {
