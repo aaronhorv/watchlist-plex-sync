@@ -840,7 +840,7 @@
             }
         }
         
-        async function saveConfig() {
+        async function saveConfig(silent = false) {
             // Collect enabled streaming services
             const streamingServices = [];
             const services = [
@@ -905,10 +905,10 @@
                 });
                 
                 if (response.ok) {
-                    alert('✅ Configuration saved successfully!');
+                    if (!silent) alert('✅ Configuration saved successfully!');
                 }
             } catch (error) {
-                alert('❌ Error saving configuration: ' + error.message);
+                if (!silent) alert('❌ Error saving configuration: ' + error.message);
             }
         }
         
@@ -1084,8 +1084,8 @@
         async function startTraktAuth() {
             const btn = document.getElementById('traktAuthBtn');
             const statusEl = document.getElementById('traktAuthStatus');
-            // Save first so backend has the latest Client ID
-            await saveConfig();
+            // Save first so backend has the latest Client ID (silent — no alert during auth flow)
+            await saveConfig(true);
             if (_traktPollTimer) { clearInterval(_traktPollTimer); _traktPollTimer = null; }
             btn.disabled = true;
             statusEl.textContent = 'Requesting device code…';
@@ -1119,13 +1119,13 @@
         function startTraktPolling() {
             const pollStatus = document.getElementById('traktPollStatus');
             pollStatus.textContent = 'Waiting for authorization…';
-            const clientSecret = document.getElementById('traktClientSecret').value.trim();
+            // client_secret is read from saved config on the backend (saved by saveConfig(true) above)
             _traktPollTimer = setInterval(async () => {
                 try {
                     const res = await fetch('/api/trakt/device-token', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({device_code: _traktDeviceCode, client_secret: clientSecret})
+                        body: JSON.stringify({device_code: _traktDeviceCode})
                     });
                     const data = await res.json();
                     if (res.status === 200 && data.status === 'success') {
@@ -1145,10 +1145,23 @@
                         clearInterval(_traktPollTimer);
                         _traktPollTimer = null;
                         pollStatus.textContent = data.error || 'Authorization failed — restart.';
+                        pollStatus.style.color = '#dc3545';
                         document.getElementById('traktAuthBtn').disabled = false;
+                    } else if (res.status === 422) {
+                        clearInterval(_traktPollTimer);
+                        _traktPollTimer = null;
+                        pollStatus.textContent = 'Config error: ' + (data.error || 'Missing credentials — re-enter Client ID and Secret, then re-authorize.');
+                        pollStatus.style.color = '#dc3545';
+                        document.getElementById('traktAuthBtn').disabled = false;
+                    } else if (res.status !== 400) {
+                        pollStatus.textContent = 'Unexpected error (' + res.status + '): ' + (data.error || 'Unknown');
+                        pollStatus.style.color = '#dc3545';
                     }
-                    // 400 = still pending, keep polling
-                } catch (e) { /* network hiccup, keep polling */ }
+                    // 400 = still pending from Trakt, keep polling
+                } catch (e) {
+                    console.warn('Trakt poll error:', e);
+                    // keep polling — likely a transient network hiccup
+                }
             }, _traktPollSeconds * 1000);
         }
 

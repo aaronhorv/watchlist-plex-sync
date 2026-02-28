@@ -1186,7 +1186,7 @@ def trakt_device_token():
     client_secret = body.get('client_secret', '').strip() or config.get('traktClientSecret', '')
     device_code = body.get('device_code', '').strip()
     if not client_id or not client_secret or not device_code:
-        return jsonify({'error': 'client_id, client_secret and device_code are required'}), 400
+        return jsonify({'error': 'client_id, client_secret and device_code are required'}), 422
     try:
         resp = requests.post('https://api.trakt.tv/oauth/device/token',
                              json={'code': device_code, 'client_id': client_id, 'client_secret': client_secret},

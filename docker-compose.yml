@@ -8,6 +8,8 @@ services:
       - "5000:5000"
     volumes:
       - ./config:/config
+      - ./app.py:/app/app.py
+      - ./templates:/app/templates
     restart: unless-stopped
     environment:
       - TZ=Europe/Berlin
