@@ -1,6 +1,6 @@
 # Watchlist Sync → Plex
 
-Sync your watchlist to Plex automatically. Supports **IMDB**, **TMDB**, and **Trakt** as input sources, with streaming service filtering so you only add things you can't already watch.
+Sync your watchlist to your **Plex Watchlist** automatically — which then drives **Radarr** and **Sonarr** as the single source of truth for what to download. Supports **IMDB**, **TMDB**, and **Trakt** as input sources, with streaming service filtering so you only add things you can't already watch elsewhere.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/aaronhorv)
 
@@ -13,6 +13,26 @@ Sync your watchlist to Plex automatically. Supports **IMDB**, **TMDB**, and **Tr
 - **OAuth flows built in** — authenticate with TMDB and Trakt directly from the web UI
 - **Auto sync** — runs every 6 hours; manual trigger available
 - **Web dashboard** — configure, monitor, and view results from a browser
+
+---
+
+## How it works
+
+```
+Watchlist source            This app              Arr apps
+(IMDB / TMDB / Trakt)  ──────────────────▶  Plex Watchlist  ──▶  Radarr (movies)
+                          syncs every 6h                      └──▶  Sonarr (shows)
+```
+
+1. You maintain a watchlist on IMDB, TMDB, or Trakt
+2. This app syncs it into your **Plex Watchlist** every 6 hours (or on demand)
+3. **Radarr** and **Sonarr** poll the Plex Watchlist as an import list and automatically download matching items
+
+The Plex Watchlist is the single source of truth — anything added here gets picked up automatically. The streaming service filter prevents adding titles you can already watch on Netflix, Disney+, etc.
+
+### Radarr & Sonarr setup
+
+In both apps: **Settings → Import Lists → Add → Plex Watchlist**. Enter your Plex token and save.
 
 ---
 
