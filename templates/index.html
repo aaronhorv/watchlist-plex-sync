@@ -496,6 +496,11 @@
                             <input type="text" id="imdbUrl" placeholder="https://www.imdb.com/user/urXXXXXXXX/watchlist or https://www.imdb.com/list/lsXXXXXXXX/">
                             <small style="color:#888;">Your IMDB watchlist or list URL (must be public)</small>
                         </div>
+                        <div class="form-group">
+                            <label>IMDB Session Cookie <small style="color:#888;font-weight:normal;">(optional — required if bot-blocked)</small></label>
+                            <input type="password" id="imdbCookie" placeholder="Paste your at-main cookie value here">
+                            <small style="color:#888;">Chrome: DevTools → Application → Cookies → imdb.com → <code>at-main</code> → copy Value</small>
+                        </div>
                     </div>
 
                     <!-- TMDB List fields -->
@@ -805,6 +810,7 @@
                 }
 
                 document.getElementById('imdbUrl').value = config.imdbListUrl || '';
+                document.getElementById('imdbCookie').value = config.imdbCookie || '';
                 document.getElementById('tmdbListId').value = config.tmdbListId || '';
                 document.getElementById('tmdbAccountId').value = config.tmdbAccountId || '';
                 document.getElementById('tmdbSessionId').value = config.tmdbSessionId || '';
@@ -887,6 +893,7 @@
                 ...saved,
                 listSource: currentSource,
                 imdbListUrl: document.getElementById('imdbUrl').value,
+                imdbCookie: document.getElementById('imdbCookie').value,
                 tmdbListId: document.getElementById('tmdbListId').value,
                 tmdbAccountId: document.getElementById('tmdbAccountId').value,
                 tmdbSessionId: document.getElementById('tmdbSessionId').value,

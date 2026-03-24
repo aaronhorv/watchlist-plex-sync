@@ -33,7 +33,8 @@ def load_config():
         'traktRefreshToken': '',
         'plexToken': '',
         'tmdbApiKey': '',
-        'streamingServices': []  # Now stores [{"id": 8, "region": "DE"}, ...]
+        'streamingServices': [],  # Now stores [{"id": 8, "region": "DE"}, ...]
+        'imdbCookie': ''
     }
 
 def save_config(config):
@@ -254,6 +255,11 @@ def get_imdb_export_data(user_id):
         # Try both URLs with JSON extraction
         watchlist_url = f"https://www.imdb.com/user/{user_id}/watchlist"
 
+        imdb_cookie = load_config().get('imdbCookie', '').strip()
+        if imdb_cookie:
+            session.cookies.set('at-main', imdb_cookie, domain='.imdb.com')
+            add_log("Using IMDB session cookie for authenticated request", 'info')
+
         add_log(f"Fetching watchlist page for {user_id}...", 'info')
         response = session.get(watchlist_url, headers=headers, timeout=20)
 
@@ -387,6 +393,11 @@ def get_imdb_list_data(list_id):
             'Sec-Fetch-Site': 'none',
             'Sec-Fetch-User': '?1',
         }
+
+        imdb_cookie = load_config().get('imdbCookie', '').strip()
+        if imdb_cookie:
+            session.cookies.set('at-main', imdb_cookie, domain='.imdb.com')
+            add_log("Using IMDB session cookie for authenticated request", 'info')
 
         add_log(f"Using list ID: {list_id}", 'info')
 
