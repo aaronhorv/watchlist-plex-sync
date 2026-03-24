@@ -240,19 +240,28 @@ def get_imdb_export_data(user_id):
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'max-age=0',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
         }
-        
+
         # Try both URLs with JSON extraction
         watchlist_url = f"https://www.imdb.com/user/{user_id}/watchlist"
-        
+
         add_log(f"Fetching watchlist page for {user_id}...", 'info')
         response = session.get(watchlist_url, headers=headers, timeout=20)
-        
-        if response.status_code != 200:
+
+        if response.status_code >= 400:
             add_log(f"Failed to fetch watchlist: {response.status_code}", 'error')
             return []
+        if response.status_code != 200:
+            add_log(f"Watchlist returned {response.status_code}, attempting extraction anyway...", 'warning')
         
         # JSON EXTRACTION - This gets ALL items!
         html_content = response.text
@@ -368,20 +377,27 @@ def get_imdb_list_data(list_id):
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'max-age=0',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
         }
-        
+
         add_log(f"Using list ID: {list_id}", 'info')
-        
+
         # JSON EXTRACTION - Gets ALL items in one request!
         add_log(f"Attempting JSON extraction from list page...", 'info')
         list_url = f"https://www.imdb.com/list/{list_id}/"
-        
+
         try:
             response = session.get(list_url, headers=headers, timeout=20)
-            
-            if response.status_code == 200:
+
+            if response.status_code < 400:
                 html_content = response.text
                 soup = BeautifulSoup(response.content, 'html.parser')
                 
